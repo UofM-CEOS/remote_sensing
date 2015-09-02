@@ -1,8 +1,8 @@
 #! /bin/bash
 # Author: Sebastian Luque
 # Created: 2015-09-01T22:30:39+0000
-# Last-Updated: 2015-09-01T22:35:48+0000
-#           By: Sebastian Luque
+# Last-Updated: 2015-09-02T13:07:59+0000
+#           By: Sebastian P. Luque
 # -------------------------------------------------------------------------
 # Commentary:
 #
@@ -82,13 +82,13 @@ OPTIONS
         the UUID and the names of the products found in the DHuS archive.
 
 NOTE
-     'wget' is necessary to run the dhusget
+     'wget' executable must be available on PATH.
 
 EOF
 }
 
 print_version () {
-    echo "dhusget ${VERSION}"
+    echo "ceos_dhusget ${VERSION}"
     exit -1
 }
 
@@ -196,15 +196,15 @@ fi
 QUERY_STATEMENT="${DHUS_DEST}/search?q=${QUERY_STATEMENT}&rows=10000&start=0"
 
 #--- Execute query statement create our list of products
-rm -f query-result
+rm -f query_result product_list
 mkdir -p ./output/
 echo "Requesting ${QUERY_STATEMENT}"
 ${WC} ${AUTH} --output-file=./output/.log_query.log \
-      -O query-result "${QUERY_STATEMENT}"
+      -O query_result "${QUERY_STATEMENT}"
 LASTDATE=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
 sleep 5
 
-awk -v ofile="${PRODUCTS_LIST_FILE}" '
+awk '
     /<title>/ {			# This rule needs to be 1st
         split($0, title_arr, /[<>]/)
         title=title_arr[3] # 1st position is empty, so need 3rd
@@ -217,7 +217,7 @@ awk -v ofile="${PRODUCTS_LIST_FILE}" '
         if (id ~ /\/+/) next
         print nrow, id >> "product_list"
     }
-' query-result
+' query_result
 
 PRODUCTS_LIST_FILE=product_list
 if [ ! -f ${PRODUCTS_LIST_FILE} ]; then
@@ -234,8 +234,8 @@ if [ "${TO_DOWNLOAD}" == "manifest" -o "${TO_DOWNLOAD}" == "all" ]; then
 	read line
 	UUID=$(echo $line | awk '{print $2}')
 	URL_STR1="${DHUS_DEST}/odata/v1/Products('${UUID}')/Nodes"
-	URL_STR2="${URL_STR1}('${PRODUCT_NAME}.SAFE')/Nodes('manifest.safe')"
-	URL_STR="${URL_STR2}/\$value"
+	URL_STR2="('${PRODUCT_NAME}.SAFE')/Nodes('manifest.safe')"
+	URL_STR="${URL_STR1}${URL_STR2}/\$value"
 	echo ${URL_STR}
 	${WC} ${AUTH} --output-file=./output/.log.${PRODUCT_NAME}.log \
 	      -O ./MANIFEST/manifest.safe-${PRODUCT_NAME} "${URL_STR}"
