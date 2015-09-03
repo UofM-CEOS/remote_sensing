@@ -1,17 +1,21 @@
 #! /bin/bash
 # Author: Sebastian Luque
 # Created: 2015-09-01T22:30:39+0000
-# Last-Updated: 2015-09-02T13:07:59+0000
+# Last-Updated: 2015-09-03T04:49:39+0000
 #           By: Sebastian P. Luque
 # -------------------------------------------------------------------------
 # Commentary:
 #
-# This is a re-written version of dhusget demo from the Sentinel's Batch
-# scripting guide.
+# This is a fully functional adaptation of dhusget.sh demo from Sentinel's
+# Batch scripting guide from their web site.
+#
+# Example:
+#
+# ./ceos_dhusget.sh -u USER -p SECRET -T SLC -d https://scihub.esa.int/dhus
 # -------------------------------------------------------------------------
 # Code:
 
-VERSION=0.3
+VERSION=0.3.0
 
 WD=${HOME}/.dhusget
 PIDFILE=${WD}/pid
@@ -22,7 +26,7 @@ test -d ${WD} || mkdir -p ${WD}
 mkdir ${LOCK}
 
 if [ ! $? == 0 ]; then
-    echo "Error! An istance of \"dhusget\" retriever is running !"
+    echo "Error! An istance of \"dhusget\" retriever is running!"
     echo "Pid is: $(cat ${PIDFILE})"
     echo "If it isn't running delete the lockdir ${LOCK}"
     exit
@@ -32,22 +36,18 @@ fi
 trap "rm -rf ${LOCK}" EXIT
 
 
-usage () {
+function usage() {
     cat <<EOF
 DESCRIPTION
-
-    This is dhusget $VERSION, a non interactive Sentinel-1 product
-    (or manifest) retriever from a Data Hub instance.
+    This is dhusget $VERSION, a non interactive Sentinel-1 product (or manifest)
+    retriever from a Data Hub instance.
 
 USAGE
-    $1 [-d <DHuS URL>] [-u <username> ] [ -p <password>]
-       [-t <time to search (hours)>] [-c <coordinates ie: x1,y1;x2,y2>]
-       [-T <product type>] [-o <option>]
+    $1 [-u <username> ] [ -p <password>] [-t <time to search (hours)>]
+       [-c <coordinates ie: x1,y1;x2,y2>] [-T <product type>] [-o <option>]
+       DHuS_URL
 
 OPTIONS
-    -d <DHuS URL>:
-        The URL of the Data Hub to query
-
     -u <username>:
         Data hub username provided after registration on <DHuS URL>
 
@@ -70,7 +70,7 @@ OPTIONS
 
      -T <product type>:
         Product type of the product to search
-        (available values are:  SLC, GRD, OCN and RAW)
+        (available values are: SLC, GRD, OCN, S2MSI1C)
 
      -o <option>:
         What to download, possible options are:
@@ -101,11 +101,8 @@ PRODUCT_TYPE=""
 
 unset TIMEFILE
 
-while getopts ":d:u:p:t:f:c:T:o:V" opt; do
+while getopts ":u:p:t:f:c:T:o:vh" opt; do
     case $opt in
-	d)
-	    DHUS_DEST="${OPTARG}"
-	    ;;
 	u)
 	    USERNAME="${OPTARG}"
 	    ;;
@@ -140,8 +137,11 @@ while getopts ":d:u:p:t:f:c:T:o:V" opt; do
 	o)
 	    TO_DOWNLOAD="${OPTARG}"
 	    ;;
-	V)
+	v)
 	    print_version $0
+	    ;;
+	h)
+	    usage $0
 	    ;;
 	*)
 	    echo "Unrecognized option"
@@ -149,6 +149,16 @@ while getopts ":d:u:p:t:f:c:T:o:V" opt; do
 	    exit -1
     esac
 done
+shift $(( $OPTIND - 1 ))
+
+# Sanity checks
+if [ "$#" != 1 ]; then
+    echo "One DHuS URL is required."
+    usage $0
+    exit 1
+fi
+
+DHUS_DEST=$1
 
 if [ -z "$PASSWORD" ]; then
     read -s -p "Enter password ..." VAL
@@ -175,88 +185,102 @@ fi
 # the query statement
 if [ ! -z "${TIME}" ]; then
     if [ ! -z "${QUERY_STATEMENT}" ]; then
-	QUERY_STATEMENT="${QUERY_STATEMENT} AND"
+	QUERY_STATEMENT="${QUERY_STATEMENT} AND ${TIME_SUBQUERY}"
+    else
+	QUERY_STATEMENT="${TIME_SUBQUERY}"
     fi
-    QUERY_STATEMENT="${QUERY_STATEMENT} ${TIME_SUBQUERY}"
 fi
 
-#---- Prepare query polygon statement
+# Prepare query polygon statement
 if [ ! -z $x1 ]; then
-    if [ ! -z "${QUERY_STATEMENT}" ]; then
-	QUERY_STATEMENT="${QUERY_STATEMENT} AND"
-    fi
     geo_subq1="(footprint:\"Intersects(POLYGON(("
     geo_subq2="%.13f %.13f,%.13f %.13f,%.13f %.13f,%.13f %.13f,%.13f %.13f"
     geo_subq="${geo_subq1}${geo_subq2})))\")"
     GEO_SUBQUERY=$(printf "${geo_subq}" $x1 $y1 $x2 $y1 $x2 $y2 $x1 $y2 \
     			  $x1 $y1)
-    QUERY_STATEMENT="${QUERY_STATEMENT} ${GEO_SUBQUERY}"
+    if [ ! -z "${QUERY_STATEMENT}" ]; then
+	QUERY_STATEMENT="${QUERY_STATEMENT} AND ${GEO_SUBQUERY}"
+    else
+	QUERY_STATEMENT="${GEO_SUBQUERY}"
+    fi
 fi
 
-QUERY_STATEMENT="${DHUS_DEST}/search?q=${QUERY_STATEMENT}&rows=10000&start=0"
+QUERY_URI="${DHUS_DEST}/search?q=${QUERY_STATEMENT}&rows=10000&start=0"
 
-#--- Execute query statement create our list of products
-rm -f query_result product_list
+# Execute query statement create our list of products
+QUERY_FILE=query_result
+PRODUCTS_LIST_FILE=product_list
+rm -f ${QUERY_FILE} ${PRODUCTS_LIST_FILE}
 mkdir -p ./output/
-echo "Requesting ${QUERY_STATEMENT}"
+echo "Requesting ${QUERY_URI}"
 ${WC} ${AUTH} --output-file=./output/.log_query.log \
-      -O query_result "${QUERY_STATEMENT}"
+      -O "${QUERY_FILE}" "${QUERY_URI}"
 LASTDATE=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
 sleep 5
 
-awk '
+# I think this xml scraping would be better done in Python.  However, the
+# downloading seems better with wget... perhaps the requests, lxml, and
+# subprocess modules is all we'd need?
+awk -v fn="${PRODUCTS_LIST_FILE}" '
     /<title>/ {			# This rule needs to be 1st
         split($0, title_arr, /[<>]/)
         title=title_arr[3] # 1st position is empty, so need 3rd
         if (title ~ /results for/) next
-        print ++nrow, title > "product_list"
+        print ++nrow, title > fn
     }
     /<id>/ {
         split($0, id_arr, /[<>]/)
         id=id_arr[3] # 1st position is empty, so need 3rd
         if (id ~ /\/+/) next
-        print nrow, id >> "product_list"
+        print nrow, id >> fn
     }
-' query_result
+' ${QUERY_FILE}
 
-PRODUCTS_LIST_FILE=product_list
 if [ ! -f ${PRODUCTS_LIST_FILE} ]; then
-    echo "Error: Input file ${PRODUCTS_LIST_FILE} not found"
+    echo "Error: Input file ${PRODUCTS_LIST_FILE} not generated"
     exit
 fi
 
-# Now we're ready to download what we requested
-rv=0
-if [ "${TO_DOWNLOAD}" == "manifest" -o "${TO_DOWNLOAD}" == "all" ]; then
-    mkdir -p MANIFEST/
-    while read line ; do
-	PRODUCT_NAME=$(echo $line | awk '{print $2}')
-	read line
-	UUID=$(echo $line | awk '{print $2}')
-	URL_STR1="${DHUS_DEST}/odata/v1/Products('${UUID}')/Nodes"
-	URL_STR2="('${PRODUCT_NAME}.SAFE')/Nodes('manifest.safe')"
-	URL_STR="${URL_STR1}${URL_STR2}/\$value"
-	echo ${URL_STR}
-	${WC} ${AUTH} --output-file=./output/.log.${PRODUCT_NAME}.log \
-	      -O ./MANIFEST/manifest.safe-${PRODUCT_NAME} "${URL_STR}"
-	r=$?
-	let rv=$rv+$r
-    done < ${PRODUCTS_LIST_FILE}
-fi
+# Now we're ready to download what we requested, if any
 
-if [ "${TO_DOWNLOAD}" == "product" -o "${TO_DOWNLOAD}" == "all" ]; then
-    mkdir -p PRODUCT/
+function download() { #@ USAGE: download PROD_FILE OPT ('m' or 'p')
+    if [ $2 == "m" ]; then
+	mkdir -p MANIFEST
+    else
+	mkdir -p PRODUCT
+    fi
     while read line ; do
 	PRODUCT_NAME=$(echo $line | awk '{print $2}')
 	read line
 	UUID=$(echo $line | awk '{print $2}')
-	URL_STR="${DHUS_DEST}/odata/v1/Products('${UUID}')/\$value"
-	echo ${URL_STR}
-	${WC} ${AUTH} --output-file=./output/.log.${PRODUCT_NAME}.log \
-	      -O ./PRODUCT/${PRODUCT_NAME}".zip" "${URL_STR}"
-	r=$?
-	let rv=$rv+$r
-    done < ${PRODUCTS_LIST_FILE}
+	if [ $2 == "m" ]; then
+	    URL_STR1="${DHUS_DEST}/odata/v1/Products('${UUID}')/Nodes"
+	    URL_STR2="('${PRODUCT_NAME}.SAFE')/Nodes('manifest.safe')"
+	    URL_STR="${URL_STR1}${URL_STR2}/\$value"
+	    echo ${URL_STR}
+	    ${WC} ${AUTH} --output-file=./output/.log.${PRODUCT_NAME}.log \
+		  -O ./MANIFEST/manifest.safe-${PRODUCT_NAME} "${URL_STR}"
+	    r=$?
+	    let rv=$rv+$r
+	else
+	    URL_STR="${DHUS_DEST}/odata/v1/Products('${UUID}')/\$value"
+	    echo ${URL_STR}
+	    ${WC} ${AUTH} --output-file=./output/.log.${PRODUCT_NAME}.log \
+		  -O ./PRODUCT/${PRODUCT_NAME}".zip" "${URL_STR}"
+	    r=$?
+	    let rv=$rv+$r
+	fi
+    done < $1
+}
+
+rv=0
+if [ -z ${TO_DOWNLOAD} ]; then
+    echo "No downloads requested; query results written to ${QUERY_FILE}"
+    exit
+elif [ "${TO_DOWNLOAD}" == "manifest" -o "${TO_DOWNLOAD}" == "all" ]; then
+    download ${PRODUCTS_LIST_FILE} "m"
+elif [ "${TO_DOWNLOAD}" == "product" -o "${TO_DOWNLOAD}" == "all" ]; then
+    download ${PRODUCTS_LIST_FILE} "p"
 fi
 
 if [ $rv == 0 ]; then
