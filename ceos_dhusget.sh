@@ -1,7 +1,7 @@
 #! /bin/bash
 # Author: Sebastian Luque
 # Created: 2015-09-01T22:30:39+0000
-# Last-Updated: 2015-09-03T04:49:39+0000
+# Last-Updated: 2015-09-03T13:01:01+0000
 #           By: Sebastian P. Luque
 # -------------------------------------------------------------------------
 # Commentary:
@@ -15,31 +15,31 @@
 # -------------------------------------------------------------------------
 # Code:
 
-VERSION=0.3.0
+version=0.3.0
 
-WD=${HOME}/.dhusget
-PIDFILE=${WD}/pid
-LOCK=${WD}/lock
+wd=${HOME}/.dhusget
+pidfile=${wd}/pid
+lock=${wd}/lock
 
-test -d ${WD} || mkdir -p ${WD}
+test -d ${wd} || mkdir -p ${wd}
 
-mkdir ${LOCK}
+mkdir ${lock}
 
 if [ ! $? == 0 ]; then
     echo "Error! An istance of \"dhusget\" retriever is running!"
-    echo "Pid is: $(cat ${PIDFILE})"
-    echo "If it isn't running delete the lockdir ${LOCK}"
+    echo "pid is: $(cat ${pidfile})"
+    echo "If it isn't running delete the lockdir ${lock}"
     exit
 else
-    echo $$ > $PIDFILE
+    echo $$ > $pidfile
 fi
-trap "rm -rf ${LOCK}" EXIT
+trap "rm -rf ${lock}" EXIT
 
 
-function usage() {
+usage() {
     cat <<EOF
 DESCRIPTION
-    This is dhusget $VERSION, a non interactive Sentinel-1 product (or manifest)
+    This is dhusget $version, a non interactive Sentinel-1 product (or manifest)
     retriever from a Data Hub instance.
 
 USAGE
@@ -87,55 +87,55 @@ NOTE
 EOF
 }
 
-print_version () {
-    echo "ceos_dhusget ${VERSION}"
+print_version() {
+    echo "ceos_dhusget ${version}"
     exit -1
 }
 
 #---  Load input parameter
-DHUS_DEST="https://dhus.example.com"
-USERNAME=""
-PASSWORD=""
-TIME_SUBQUERY=""
-PRODUCT_TYPE=""
+dhus_dest="https://dhus.example.com"
+username=""
+password=""
+time_subquery=""
+product_type=""
 
-unset TIMEFILE
+unset timefile
 
 while getopts ":u:p:t:f:c:T:o:vh" opt; do
     case $opt in
 	u)
-	    USERNAME="${OPTARG}"
+	    username="${OPTARG}"
 	    ;;
 	p)
-	    PASSWORD="${OPTARG}"
+	    password="${OPTARG}"
 	    ;;
 	t)
-	    TIME="${OPTARG}"
-	    TIME_SUBQUERY="ingestiondate:[NOW-${TIME}HOURS TO NOW]"
+	    time="${OPTARG}"
+	    time_subquery="ingestiondate:[NOW-${time}HOURS TO NOW]"
 	    ;;
 	f)
-	    TIMEFILE="${OPTARG}"
-	    if [ -f "$TIMEFILE" ]; then
-		TIME_SUBQUERY="ingestiondate:[$(cat $TIMEFILE) TO NOW]"
+	    timefile="${OPTARG}"
+	    if [ -f "$timefile" ]; then
+		TIME_SUBQUERY="ingestiondate:[$(cat $timefile) TO NOW]"
 	    else
 		TIME_SUBQUERY="ingestiondate:[1970-01-01T00:00:00.000Z TO NOW]"
 	    fi
 	    ;;
 	c)
-	    ROW=${OPTARG}
-	    FIRST=$(echo "$ROW" | awk -F: '{print $1}')
-	    SECOND=$(echo "$ROW" | awk -F: '{print $2}')
-	    x1=$(echo ${FIRST} | awk -F, '{print $1}')
-	    y1=$(echo ${FIRST} | awk -F, '{print $2}')
-	    x2=$(echo ${SECOND} | awk -F, '{print $1}')
-	    y2=$(echo ${SECOND} | awk -F, '{print $2}')
+	    row=${OPTARG}
+	    first=$(echo "$row" | awk -F: '{print $1}')
+	    second=$(echo "$row" | awk -F: '{print $2}')
+	    x1=$(echo ${first} | awk -F, '{print $1}')
+	    y1=$(echo ${first} | awk -F, '{print $2}')
+	    x2=$(echo ${second} | awk -F, '{print $1}')
+	    y2=$(echo ${second} | awk -F, '{print $2}')
 	    ;;
 
 	T)
-	    PRODUCT_TYPE="${OPTARG}"
+	    product_type="${OPTARG}"
 	    ;;
 	o)
-	    TO_DOWNLOAD="${OPTARG}"
+	    to_download="${OPTARG}"
 	    ;;
 	v)
 	    print_version $0
@@ -158,36 +158,35 @@ if [ "$#" != 1 ]; then
     exit 1
 fi
 
-DHUS_DEST=$1
-
-if [ -z "$PASSWORD" ]; then
-    read -s -p "Enter password ..." VAL
-    PASSWORD=${VAL}
+if [ -z "$password" ]; then
+    read -s -p "Enter password ..." val
+    password=${val}
 fi
 
-WC="wget --no-check-certificate"
-AUTH="--user=${USERNAME} --password=${PASSWORD}"
+dhus_dest=$1
+wc="wget --no-check-certificate"
+auth="--user=${username} --password=${password}"
 
 # If we haven't gotten any period to search for, nor coordinates or product
 # type, then set a wildcard query statement
-if [ -z "${TIME}" ] && [ -z "${TIMEFILE}" ] && \
-       [ -z "${ROW}" ] && [ -z "${PRODUCT_TYPE}" ]; then
-    QUERY_STATEMENT="*"
+if [ -z "${time}" ] && [ -z "${timefile}" ] && \
+       [ -z "${row}" ] && [ -z "${product_type}" ]; then
+    query_statement="*"
 fi
 
 # First check if we were asked for a product type, and if so, append
 # producctype request to query statement
-if [ ! -z "${PRODUCT_TYPE}" ]; then
-    QUERY_STATEMENT="producttype:$PRODUCT_TYPE"
+if [ ! -z "${product_type}" ]; then
+    query_statement="producttype:$product_type"
 fi
 
 # If we were asked for a period, append the corresponding time subquery to
 # the query statement
-if [ ! -z "${TIME}" ]; then
-    if [ ! -z "${QUERY_STATEMENT}" ]; then
-	QUERY_STATEMENT="${QUERY_STATEMENT} AND ${TIME_SUBQUERY}"
+if [ ! -z "${time}" ]; then
+    if [ ! -z "${query_statement}" ]; then
+	query_statement="${query_statement} AND ${time_subquery}"
     else
-	QUERY_STATEMENT="${TIME_SUBQUERY}"
+	query_statement="${time_subquery}"
     fi
 fi
 
@@ -196,32 +195,32 @@ if [ ! -z $x1 ]; then
     geo_subq1="(footprint:\"Intersects(POLYGON(("
     geo_subq2="%.13f %.13f,%.13f %.13f,%.13f %.13f,%.13f %.13f,%.13f %.13f"
     geo_subq="${geo_subq1}${geo_subq2})))\")"
-    GEO_SUBQUERY=$(printf "${geo_subq}" $x1 $y1 $x2 $y1 $x2 $y2 $x1 $y2 \
+    geo_subquery=$(printf "${geo_subq}" $x1 $y1 $x2 $y1 $x2 $y2 $x1 $y2 \
     			  $x1 $y1)
-    if [ ! -z "${QUERY_STATEMENT}" ]; then
-	QUERY_STATEMENT="${QUERY_STATEMENT} AND ${GEO_SUBQUERY}"
+    if [ ! -z "${query_statement}" ]; then
+	query_statement="${query_statement} AND ${geo_subquery}"
     else
-	QUERY_STATEMENT="${GEO_SUBQUERY}"
+	query_statement="${geo_subquery}"
     fi
 fi
 
-QUERY_URI="${DHUS_DEST}/search?q=${QUERY_STATEMENT}&rows=10000&start=0"
+query_uri="${dhus_dest}/search?q=${query_statement}&rows=10000&start=0"
+query_file=query_result
+products_list_file=product_list
 
 # Execute query statement create our list of products
-QUERY_FILE=query_result
-PRODUCTS_LIST_FILE=product_list
-rm -f ${QUERY_FILE} ${PRODUCTS_LIST_FILE}
+rm -f ${query_file} ${products_list_file}
 mkdir -p ./output/
-echo "Requesting ${QUERY_URI}"
-${WC} ${AUTH} --output-file=./output/.log_query.log \
-      -O "${QUERY_FILE}" "${QUERY_URI}"
-LASTDATE=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
+echo "Requesting ${query_uri}"
+${wc} ${auth} --output-file=./output/.log_query.log \
+      -O "${query_file}" "${query_uri}"
+lastdate=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
 sleep 5
 
-# I think this xml scraping would be better done in Python.  However, the
-# downloading seems better with wget... perhaps the requests, lxml, and
+# I think all this xml scraping would be better done in Python.  However,
+# the downloading seems better with wget... perhaps the requests, lxml, and
 # subprocess modules is all we'd need?
-awk -v fn="${PRODUCTS_LIST_FILE}" '
+awk -v fn="${products_list_file}" '
     /<title>/ {			# This rule needs to be 1st
         split($0, title_arr, /[<>]/)
         title=title_arr[3] # 1st position is empty, so need 3rd
@@ -234,57 +233,56 @@ awk -v fn="${PRODUCTS_LIST_FILE}" '
         if (id ~ /\/+/) next
         print nrow, id >> fn
     }
-' ${QUERY_FILE}
+' ${query_file}
 
-if [ ! -f ${PRODUCTS_LIST_FILE} ]; then
-    echo "Error: Input file ${PRODUCTS_LIST_FILE} not generated"
+if [ ! -f ${products_list_file} ]; then
+    echo "Error: Input file ${products_list_file} not generated"
     exit
 fi
 
 # Now we're ready to download what we requested, if any
 
-function download() { #@ USAGE: download PROD_FILE OPT ('m' or 'p')
+download() { #@ USAGE: download PROD_FILE OPT ('m' or 'p')
     if [ $2 == "m" ]; then
 	mkdir -p MANIFEST
     else
 	mkdir -p PRODUCT
     fi
+    local rv=0
     while read line ; do
-	PRODUCT_NAME=$(echo $line | awk '{print $2}')
+	product_name=$(echo $line | awk '{print $2}')
 	read line
-	UUID=$(echo $line | awk '{print $2}')
+	uuid=$(echo $line | awk '{print $2}')
 	if [ $2 == "m" ]; then
-	    URL_STR1="${DHUS_DEST}/odata/v1/Products('${UUID}')/Nodes"
-	    URL_STR2="('${PRODUCT_NAME}.SAFE')/Nodes('manifest.safe')"
-	    URL_STR="${URL_STR1}${URL_STR2}/\$value"
-	    echo ${URL_STR}
-	    ${WC} ${AUTH} --output-file=./output/.log.${PRODUCT_NAME}.log \
-		  -O ./MANIFEST/manifest.safe-${PRODUCT_NAME} "${URL_STR}"
+	    url_str1="${dhus_dest}/odata/v1/Products('${uuid}')/Nodes"
+	    url_str2="('${product_name}.SAFE')/Nodes('manifest.safe')"
+	    url_str="${url_str1}${url_str2}/\$value"
+	    echo "Downloading ${url_str}"
+	    ${wc} ${auth} --output-file=./output/.log.${product_name}.log \
+		  -O ./MANIFEST/manifest.safe-${product_name} "${url_str}"
 	    r=$?
 	    let rv=$rv+$r
 	else
-	    URL_STR="${DHUS_DEST}/odata/v1/Products('${UUID}')/\$value"
-	    echo ${URL_STR}
-	    ${WC} ${AUTH} --output-file=./output/.log.${PRODUCT_NAME}.log \
-		  -O ./PRODUCT/${PRODUCT_NAME}".zip" "${URL_STR}"
+	    url_str="${dhus_dest}/odata/v1/Products('${uuid}')/\$value"
+	    echo "Downloading ${URL_STR}"
+	    ${wc} ${auth} --output-file=./output/.log.${product_name}.log \
+		  -O ./PRODUCT/${product_name}".zip" "${url_str}"
 	    r=$?
 	    let rv=$rv+$r
 	fi
     done < $1
+    if [ $rv == 0 ]; then
+	if [ ! -z $timefile ]; then
+	    echo "$lastdate" > $timefile
+	fi
+    fi
 }
 
-rv=0
-if [ -z ${TO_DOWNLOAD} ]; then
-    echo "No downloads requested; query results written to ${QUERY_FILE}"
+if [ -z ${to_download} ]; then
+    echo "No downloads requested; query results written to ${query_file}"
     exit
-elif [ "${TO_DOWNLOAD}" == "manifest" -o "${TO_DOWNLOAD}" == "all" ]; then
-    download ${PRODUCTS_LIST_FILE} "m"
-elif [ "${TO_DOWNLOAD}" == "product" -o "${TO_DOWNLOAD}" == "all" ]; then
-    download ${PRODUCTS_LIST_FILE} "p"
-fi
-
-if [ $rv == 0 ]; then
-    if [ ! -z $TIMEFILE ]; then
-	echo "$LASTDATE" > $TIMEFILE
-    fi
+elif [ "${to_download}" == "manifest" -o "${to_download}" == "all" ]; then
+    download ${products_list_file} "m"
+elif [ "${to_download}" == "product" -o "${to_download}" == "all" ]; then
+    download ${products_list_file} "p"
 fi
