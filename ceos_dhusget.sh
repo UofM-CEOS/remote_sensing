@@ -1,7 +1,7 @@
 #! /bin/bash
 # Author: Sebastian Luque
 # Created: 2015-09-01T22:30:39+0000
-# Last-Updated: 2015-09-03T13:01:01+0000
+# Last-Updated: 2015-09-03T13:37:51+0000
 #           By: Sebastian P. Luque
 # -------------------------------------------------------------------------
 # Commentary:
@@ -15,26 +15,23 @@
 # -------------------------------------------------------------------------
 # Code:
 
-version=0.3.0
+version=0.1.0
 
 wd=${HOME}/.dhusget
 pidfile=${wd}/pid
 lock=${wd}/lock
-
 test -d ${wd} || mkdir -p ${wd}
-
 mkdir ${lock}
 
 if [ ! $? == 0 ]; then
     echo "Error! An istance of \"dhusget\" retriever is running!"
     echo "pid is: $(cat ${pidfile})"
-    echo "If it isn't running delete the lockdir ${lock}"
+    echo "If it isn't running delete the lock directory: ${lock}"
     exit
 else
     echo $$ > $pidfile
 fi
 trap "rm -rf ${lock}" EXIT
-
 
 usage() {
     cat <<EOF
@@ -100,7 +97,6 @@ time_subquery=""
 product_type=""
 
 unset timefile
-
 while getopts ":u:p:t:f:c:T:o:vh" opt; do
     case $opt in
 	u)
@@ -218,8 +214,8 @@ lastdate=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
 sleep 5
 
 # I think all this xml scraping would be better done in Python.  However,
-# the downloading seems better with wget... perhaps the requests, lxml, and
-# subprocess modules is all we'd need?
+# the downloading seems better/easier with wget... perhaps the requests,
+# lxml, and subprocess modules is all we'd need?
 awk -v fn="${products_list_file}" '
     /<title>/ {			# This rule needs to be 1st
         split($0, title_arr, /[<>]/)
@@ -242,8 +238,9 @@ fi
 
 # Now we're ready to download what we requested, if any
 
-download() { #@ USAGE: download PROD_FILE OPT ('m' or 'p')
-    if [ $2 == "m" ]; then
+dhus_download() { #@ USAGE: download PROD_FILE OPT ('-m' or '-p')
+    # There's only two options, so for now we just test for -m
+    if [ $2 == "-m" ]; then
 	mkdir -p MANIFEST
     else
 	mkdir -p PRODUCT
@@ -253,7 +250,7 @@ download() { #@ USAGE: download PROD_FILE OPT ('m' or 'p')
 	product_name=$(echo $line | awk '{print $2}')
 	read line
 	uuid=$(echo $line | awk '{print $2}')
-	if [ $2 == "m" ]; then
+	if [ $2 == "-m" ]; then
 	    url_str1="${dhus_dest}/odata/v1/Products('${uuid}')/Nodes"
 	    url_str2="('${product_name}.SAFE')/Nodes('manifest.safe')"
 	    url_str="${url_str1}${url_str2}/\$value"
@@ -272,7 +269,7 @@ download() { #@ USAGE: download PROD_FILE OPT ('m' or 'p')
 	fi
     done < $1
     if [ $rv == 0 ]; then
-	if [ ! -z $timefile ]; then
+	if [ ! -z "$timefile" ]; then
 	    echo "$lastdate" > $timefile
 	fi
     fi
@@ -282,7 +279,7 @@ if [ -z ${to_download} ]; then
     echo "No downloads requested; query results written to ${query_file}"
     exit
 elif [ "${to_download}" == "manifest" -o "${to_download}" == "all" ]; then
-    download ${products_list_file} "m"
+    dhus_download ${products_list_file} "-m"
 elif [ "${to_download}" == "product" -o "${to_download}" == "all" ]; then
-    download ${products_list_file} "p"
+    dhus_download ${products_list_file} "-p"
 fi
