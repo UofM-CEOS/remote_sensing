@@ -1,8 +1,8 @@
 #! /bin/bash
 # Author: Sebastian Luque
 # Created: 2015-09-01T22:30:39+0000
-# Last-Updated: 2015-09-03T13:37:51+0000
-#           By: Sebastian P. Luque
+# Last-Updated: 2015-09-03T15:54:33+0000
+#           By: Sebastian Luque
 # -------------------------------------------------------------------------
 # Commentary:
 #
@@ -126,7 +126,6 @@ while getopts ":u:p:t:f:c:T:o:vh" opt; do
 	    x2=$(echo ${second} | awk -F, '{print $1}')
 	    y2=$(echo ${second} | awk -F, '{print $2}')
 	    ;;
-
 	T)
 	    product_type="${OPTARG}"
 	    ;;
@@ -220,13 +219,13 @@ awk -v fn="${products_list_file}" '
     /<title>/ {			# This rule needs to be 1st
         split($0, title_arr, /[<>]/)
         title=title_arr[3] # 1st position is empty, so need 3rd
-        if (title ~ /results for/) next
+        if (title ~ /results for/) next # skip top-level node
         print ++nrow, title > fn
     }
     /<id>/ {
         split($0, id_arr, /[<>]/)
         id=id_arr[3] # 1st position is empty, so need 3rd
-        if (id ~ /\/+/) next
+        if (id ~ /\/+/) next # skip top-level node
         print nrow, id >> fn
     }
 ' ${query_file}
