@@ -3,10 +3,55 @@
 import os
 import requests
 from datetime import datetime
-from subprocess import call
 from lxml import html
 
 __version__ = "0.1.0"
+
+
+def dhus_download(prod_tups, download, download_dir, auth):
+    """Given list of tuples, download DHuS product or manifest.
+
+    Parameters
+    ----------
+    prod_tups : list
+        List of tuples with titles and URI to download.
+    download : string
+        String indicating what to download: 'manifest' or 'product'
+    download_dir: string
+        String indicating path to download directory.
+    auth: tuple
+        Tuple with user and password to authenticate to DHuS.
+
+    """
+
+    if download == "manifest":
+        # Skeleton string to receive prefix URI and UUID for one product
+        uri_skel = "{0}/Nodes('{1}.SAFE')/Nodes('manifest.safe')/$value"
+        chunk_size = 1024
+    else:
+        # Skeleton string to receive prefix URI for one product
+        uri_skel = "{}/$value"
+        chunk_size = 1024 * 1024
+
+    if not os.path.exists(download_dir):
+        os.mkdir(download_dir)
+    for title, uri in prod_tups:
+
+        if download == "manifest":
+            dwnld_uri = uri_skel.format(uri, title)
+        else:
+            dwnld_uri = uri_skel.format(uri)
+
+        fn = os.path.join(download_dir, title + "_manifest_safe")
+        uri_conn = requests.get(dwnld_uri, auth=auth, stream=True)
+        with open(fn, "w") as f:
+            for chunk in uri_conn.iter_content(chunk_size):
+                f.write(chunk)
+
+        tstampfn = os.path.join(download_dir, ".last_time_stamp")
+        with open(tstampfn, "w") as tstampf:
+            tstampf.write(datetime.utcnow().isoformat())
+
 
 def main(dhus_uri, user, password, time_since=None, time_file=None,
          coordinates=None, product=None, download=None):
@@ -56,7 +101,7 @@ def main(dhus_uri, user, password, time_since=None, time_file=None,
             qry_join = filter(None, [qry_statement, geo_subqry])
             qry_statement = " AND ".join(qry_join)
 
-    # The final query URI is ready to make
+    # The final query URI is ready to be created
     qry_uri = (dhus_uri + "/search?q=" + qry_statement +
                "&rows=10000&start=0")
     dhus_qry = requests.get(qry_uri, auth=(user, password))
@@ -65,46 +110,28 @@ def main(dhus_uri, user, password, time_since=None, time_file=None,
     uuids = qry_tree.xpath("//entry/id/text()")
     # prod_uris = qry_tree.xpath("//entry//link[not(@rel)]/@href")
     root_uris = qry_tree.xpath("//entry//link[@rel='alternative']/@href")
-    prods = zip(titles, uuids, root_uris)
     with open("qry_results", "w") as qryfile:
-        for tup in prods:
+        for tup in zip(titles, uuids, root_uris):
             qryfile.write(" ".join(str(x) for x in tup) + "\n")
 
+    prods = zip(titles, root_uris) # we only need these for downloading
+    manif_dir = "MANIFEST"
+    prod_dir = "PRODUCT"
     if download is None:
         msg = ("No downloads requested; product names and UUIDs written " +
                "to file: qry_results")
         print msg
-    elif download == "manifest" or download == "all":
-        manif_dir = "MANIFEST"
-        if not os.path.exists(manif_dir): os.mkdir(manif_dir)
-        for title, uuid, uri in prods:
-            manif_uri = (uri + "/Nodes('" + title +
-                         ".SAFE')/Nodes('manifest.safe')/$value")
-            manif_fn = os.path.join(manif_dir, title + "_manifest_safe")
-            manif_logfn = os.path.join(manif_dir, ".log_query.log")
-            manif_cmd = (["wget", "--no-check-certificate",
-                          "--user=" + user, "--password=" + password,
-                          "--output-file=" + manif_logfn,
-                          "-O" + manif_fn, manif_uri])
-            manif_exitno = call(manif_cmd)
-            manif_tstampfn = os.path.join(manif_dir, ".last_time_stamp")
-            with open(manif_tstampfn, "w") as tstampf:
-                tstampf.write(datetime.utcnow().isoformat())
-    elif download == "product" or download == "all":
-        prod_dir = "PRODUCT"
-        if not os.path.exists(prod_dir): os.mkdir(prod_dir)
-        for title, uuid, uri in prods:
-            prod_uri = uri + "/$value"
-            prod_fn = os.path.join(prod_dir, title + ".zip")
-            prod_logfn = os.path.join(prod_dir, ".log_query.log")
-            prod_cmd = (["wget", "--no-check-certificate",
-                          "--user=" + user, "--password=" + password,
-                          "--output-file=" + prod_logfn,
-                          "-O" + prod_fn, prod_uri])
-            prod_exitno = call(prod_cmd)
-            prod_tstampfn = os.path.join(prod_dir, ".last_time_stamp")
-            with open(prod_tstampfn, "w") as tstampf:
-                tstampf.write(datetime.utcnow().isoformat())
+    elif download == "manifest":
+        dhus_download(prods, download="manifest", download_dir=manif_dir,
+                      auth=(user, password))
+    elif download == "product":
+        dhus_download(prods, download="product", download_dir=prod_dir,
+                      auth=(user, password))
+    else:
+        dhus_download(prods, download="manifest", download_dir=manif_dir,
+                      auth=(user, password))
+        dhus_download(prods, download="product", download_dir=prod_dir,
+                      auth=(user, password))
 
 
 if __name__ == "__main__":
