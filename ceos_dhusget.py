@@ -1,8 +1,9 @@
 #! /usr/bin/env python
 
+import os
 import requests
-import lxml
-import subprocess
+from lxml import html
+import csv
 
 __version__ = "0.1.0"
 
@@ -19,46 +20,91 @@ def main(dhus_uri, user, password, time_since=None, time_file=None,
         qry_statement = "*"
     else:
         qry_statement = ""
+
         if product is not None:
             qry_statement = "producttype:{}".format(product)
 
         if time_since is not None or time_file is not None:
-            time_str = "ingestiondate:[NOW-{}HOURS TO NOW"
             if time_since is not None: # overrides time_file
+                time_str = "ingestiondate:[NOW-{}HOURS TO NOW]"
                 time_subqry = time_str.format(time_since)
             else:               # we have time_file
+                time_str = "ingestiondate:[{} TO NOW]"
                 try:
-                    with open(time_file) as tfile:
-                        time_infile = tfile.readline().strip()
-                        time_subqry = time_subqry.format(time_infile)
-                except IOError as err:
-                    print "I/O error ({0}): {1}".format(err.errno,
-                                                        err.strerror)
+                    with time_file: # file already opened
+                        time_infile = time_file.readline().strip()
+                        time_subqry = time_str.format(time_infile)
                 except:
                     dflt_last = "1970-01-01T00:00:00.000Z"
-                    time_subqry = time_subquery.format(dflt_last)
-                    print "Unexpected error; assuming {}".format(dflt_last)
+                    time_subqry = time_str.format(dflt_last)
+                    print ("Could not read time stamp in file; " +
+                           "assuming {}".format(dflt_last))
             # Now we have a time subquery
             qry_join = filter(None, [qry_statement, time_subqry])
             qry_statement = " AND ".join(qry_join)
 
         if coordinates is not None:
             geo_subqry1 = "(footprint:\"Intersects(POLYGON(("
-            geo_subqry2 = ("{0:.13f} {1:.13f}, {2:.13f} {1:.13f}," +
-                           "{2:.13f} {3:.13f}, {0:.13f} {3:.13f}," +
+            geo_subqry2 = ("{0:.13f} {1:.13f}, {2:.13f} {1:.13f}, " +
+                           "{2:.13f} {3:.13f}, {0:.13f} {3:.13f}, " +
                            "{0:.13f} {1:.13f}").format(coordinates[0],
                                                        coordinates[1],
                                                        coordinates[2],
                                                        coordinates[3])
             geo_subqry = geo_subqry1 + geo_subqry2 + ")))\")"
             qry_join = filter(None, [qry_statement, geo_subqry])
-            
+            qry_statement = " AND ".join(qry_join)
 
+    # The final query URI is ready to make
+    qry_uri = (dhus_uri + "/search?q=" + qry_statement +
+               "&rows=10000&start=0")
+    dhus_qry = requests.get(qry_uri, auth=(user, password))
+    qry_tree = html.fromstring(dhus_qry.content)
+    titles = qry_tree.xpath("//entry/title/text()")
+    uuids = qry_tree.xpath("//entry/id/text()")
+    # prod_uris = qry_tree.xpath("//entry//link[not(@rel)]/@href")
+    root_uris = qry_tree.xpath("//entry//link[@rel='alternative']/@href")
+    prods = zip(titles, uuids, root_uris)
+    with open("qry_results", "w") as qryfile:
+        qrycsv = csv.writer(qryfile)
+        for row in prods:
+            qrycsv.writerow(row)
+
+    if download is None:
+        msg = ("No downloads requested; product names and UUIDs written " +
+               "to file: qry_results")
+        print msg
+    elif download == "manifest" or download == "all":
+        manif_dir = "MANIFEST"
+        if not os.path.exists(manif_dir): os.mkdir(manif_dir)
+        for title, uuid, uri in prods:
+            manif_uri = (uri + "/Nodes('" + title +
+                         ".SAFE')/Nodes('manifest.safe')/$value")
+            manif = requests.get(manif_uri, auth=(user, password),
+                                 stream=True)
+            manif_fname = os.path.join(manif_dir, title + "_manifest_safe")
+            with open(manif_fname, "w") as manif_file:
+                for chunk in manif.iter_content(1024):
+                    manif_file.write(chunk)
+    elif download == "product" or download == "all":
+        prod_dir = "PRODUCT"
+        if not os.path.exists(prod_dir): os.mkdir(prod_dir)
+        for title, uuid, uri in prods:
+            prod_uri = uri + "/$value"
+            prod = requests.get(prod_uri, auth=(user, password), stream=True)
+            prod_fname = os.path.join(prod_dir, title + ".zip")
+            with open(prod_fname, "w") as prod_file:
+                for chunk in prod.iter_content(1024):
+                    prod_file.write(chunk)
+       
+
+    
 if __name__ == "__main__":
     import argparse
     _DESCRIPTION = """
     Non-interactive Sentinel-1 product (or manifest) retriever from a Data Hub
-    instance."""
+    instance.
+    """
     parser = argparse.ArgumentParser(description=_DESCRIPTION)
     parser.add_argument("dhus_uri",
                         help="DHuS root URI, without trailing slash ('/').")
@@ -69,7 +115,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--time_since", type=int,
                         help=("Number of hours (integer) since the time " +
                               "the request is made to search for products"))
-    parser.add_argument("-f", "--time_file", type=argparse.FileType("r+"),
+    parser.add_argument("-f", "--time_file", type=argparse.FileType("r"),
                         help=("Path to file containing the time of last " +
                               "successful download."))
     parser.add_argument("-c", "--coordinates", metavar="COORD",
