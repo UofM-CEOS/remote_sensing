@@ -2,8 +2,9 @@
 
 import os
 import requests
+from datetime import datetime
+from subprocess import call
 from lxml import html
-import csv
 
 __version__ = "0.1.0"
 
@@ -66,9 +67,8 @@ def main(dhus_uri, user, password, time_since=None, time_file=None,
     root_uris = qry_tree.xpath("//entry//link[@rel='alternative']/@href")
     prods = zip(titles, uuids, root_uris)
     with open("qry_results", "w") as qryfile:
-        qrycsv = csv.writer(qryfile)
-        for row in prods:
-            qrycsv.writerow(row)
+        for tup in prods:
+            qryfile.write(" ".join(str(x) for x in tup) + "\n")
 
     if download is None:
         msg = ("No downloads requested; product names and UUIDs written " +
@@ -80,25 +80,33 @@ def main(dhus_uri, user, password, time_since=None, time_file=None,
         for title, uuid, uri in prods:
             manif_uri = (uri + "/Nodes('" + title +
                          ".SAFE')/Nodes('manifest.safe')/$value")
-            manif = requests.get(manif_uri, auth=(user, password),
-                                 stream=True)
-            manif_fname = os.path.join(manif_dir, title + "_manifest_safe")
-            with open(manif_fname, "w") as manif_file:
-                for chunk in manif.iter_content(1024):
-                    manif_file.write(chunk)
+            manif_fn = os.path.join(manif_dir, title + "_manifest_safe")
+            manif_logfn = os.path.join(manif_dir, ".log_query.log")
+            manif_cmd = (["wget", "--no-check-certificate",
+                          "--user=" + user, "--password=" + password,
+                          "--output-file=" + manif_logfn,
+                          "-O" + manif_fn, manif_uri])
+            manif_exitno = call(manif_cmd)
+            manif_tstampfn = os.path.join(manif_dir, ".last_time_stamp")
+            with open(manif_tstampfn, "w") as tstampf:
+                tstampf.write(datetime.utcnow().isoformat())
     elif download == "product" or download == "all":
         prod_dir = "PRODUCT"
         if not os.path.exists(prod_dir): os.mkdir(prod_dir)
         for title, uuid, uri in prods:
             prod_uri = uri + "/$value"
-            prod = requests.get(prod_uri, auth=(user, password), stream=True)
-            prod_fname = os.path.join(prod_dir, title + ".zip")
-            with open(prod_fname, "w") as prod_file:
-                for chunk in prod.iter_content(1024):
-                    prod_file.write(chunk)
-       
+            prod_fn = os.path.join(prod_dir, title + ".zip")
+            prod_logfn = os.path.join(prod_dir, ".log_query.log")
+            prod_cmd = (["wget", "--no-check-certificate",
+                          "--user=" + user, "--password=" + password,
+                          "--output-file=" + prod_logfn,
+                          "-O" + prod_fn, prod_uri])
+            prod_exitno = call(prod_cmd)
+            prod_tstampfn = os.path.join(prod_dir, ".last_time_stamp")
+            with open(prod_tstampfn, "w") as tstampf:
+                tstampf.write(datetime.utcnow().isoformat())
 
-    
+
 if __name__ == "__main__":
     import argparse
     _DESCRIPTION = """
