@@ -44,6 +44,7 @@ def dhus_download(prod_tups, download, download_dir, auth):
 
         fn = os.path.join(download_dir, title + "_manifest_safe")
         uri_conn = requests.get(dwnld_uri, auth=auth, stream=True)
+        print "Downloading {0} {1}".format(download, title)
         with open(fn, "w") as f:
             for chunk in uri_conn.iter_content(chunk_size):
                 f.write(chunk)
@@ -53,14 +54,18 @@ def dhus_download(prod_tups, download, download_dir, auth):
             tstampf.write(datetime.utcnow().isoformat())
 
 
-def main(dhus_uri, user, password, time_since=None, time_file=None,
-         coordinates=None, product=None, download=None):
+def main(dhus_uri, user, password, **kwargs):
     """Query, and optionally, download products from DHuS Data Hub.
 
     See parser help for description of arguments.  All arguments are coerced to
     string during execution.
 
     """
+    time_since = kwargs.get("time_since")
+    time_file = kwargs.get("time_file")
+    coordinates = kwargs.get("coordinates")
+    product = kwargs.get("product")
+    download = kwargs.get("download")
     if (time_since is None and time_file is None and
         coordinates is None and product is None):
         qry_statement = "*"
@@ -85,8 +90,8 @@ def main(dhus_uri, user, password, time_since=None, time_file=None,
                     time_subqry = time_str.format(dflt_last)
                     print ("Could not read time stamp in file; " +
                            "assuming {}".format(dflt_last))
-            # Now we have a time subquery
-            qry_join = filter(None, [qry_statement, time_subqry])
+            # Now we have a time subquery. Remove possibly empty string
+            qry_join = [x for x in [qry_statement, time_subqry] if x]
             qry_statement = " AND ".join(qry_join)
 
         if coordinates is not None:
@@ -98,7 +103,7 @@ def main(dhus_uri, user, password, time_since=None, time_file=None,
                                                        coordinates[2],
                                                        coordinates[3])
             geo_subqry = geo_subqry1 + geo_subqry2 + ")))\")"
-            qry_join = filter(None, [qry_statement, geo_subqry])
+            qry_join = [x for x in [qry_statement, geo_subqry] if x]
             qry_statement = " AND ".join(qry_join)
 
     # The final query URI is ready to be created
@@ -110,28 +115,31 @@ def main(dhus_uri, user, password, time_since=None, time_file=None,
     uuids = qry_tree.xpath("//entry/id/text()")
     # prod_uris = qry_tree.xpath("//entry//link[not(@rel)]/@href")
     root_uris = qry_tree.xpath("//entry//link[@rel='alternative']/@href")
-    with open("qry_results", "w") as qryfile:
-        for tup in zip(titles, uuids, root_uris):
-            qryfile.write(" ".join(str(x) for x in tup) + "\n")
 
     prods = zip(titles, root_uris) # we only need these for downloading
-    manif_dir = "MANIFEST"
-    prod_dir = "PRODUCT"
-    if download is None:
-        msg = ("No downloads requested; product names and UUIDs written " +
-               "to file: qry_results")
-        print msg
-    elif download == "manifest":
-        dhus_download(prods, download="manifest", download_dir=manif_dir,
-                      auth=(user, password))
-    elif download == "product":
-        dhus_download(prods, download="product", download_dir=prod_dir,
-                      auth=(user, password))
+    if len(prods) > 0:
+        with open("qry_results", "w") as qryfile:
+            for tup in zip(titles, uuids, root_uris):
+                qryfile.write(" ".join(str(x) for x in tup) + "\n")
+        manif_dir = "MANIFEST"
+        prod_dir = "PRODUCT"
+        if download is None:
+            msg = ("No downloads requested; product names and UUIDs " +
+                   " written to file: qry_results")
+            print msg
+        elif download == "manifest":
+            dhus_download(prods, download="manifest",
+                          download_dir=manif_dir, auth=(user, password))
+        elif download == "product":
+            dhus_download(prods, download="product",
+                          download_dir=prod_dir, auth=(user, password))
+        else:
+            dhus_download(prods, download="manifest",
+                          download_dir=manif_dir, auth=(user, password))
+            dhus_download(prods, download="product",
+                          download_dir=prod_dir, auth=(user, password))
     else:
-        dhus_download(prods, download="manifest", download_dir=manif_dir,
-                      auth=(user, password))
-        dhus_download(prods, download="product", download_dir=prod_dir,
-                      auth=(user, password))
+        print "No products match search criteria."
 
 
 if __name__ == "__main__":
@@ -168,7 +176,7 @@ if __name__ == "__main__":
     parser.add_argument("--version", action="version",
                         version="%(prog)s {}".format(__version__))
     args = parser.parse_args()
-    main(dhus_uri=args.dhus_uri, user=args.user, password=args.password,
+    main(args.dhus_uri, args.user, args.password,
          time_since=args.time_since, time_file=args.time_file,
          coordinates=args.coordinates, product=args.product,
          download=args.download)
