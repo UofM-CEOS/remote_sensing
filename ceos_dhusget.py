@@ -24,14 +24,16 @@ def dhus_download(prod_tups, download, download_dir, auth):
 
     """
 
+    chunk_size_base = 1024      # this may need more scrutiny
+
     if download == "manifest":
         # Skeleton string to receive prefix URI and UUID for one product
         uri_skel = "{0}/Nodes('{1}.SAFE')/Nodes('manifest.safe')/$value"
-        chunk_size = 1024       # this may need more scrutiny
+        chunk_size = chunk_size_base
     else:
         # Skeleton string to receive prefix URI for one product
         uri_skel = "{}/$value"
-        chunk_size = 1024 * 1024 # we can get very large files
+        chunk_size = chunk_size_base ** 2  # we can get very large files
 
     if not os.path.exists(download_dir):
         os.mkdir(download_dir)
