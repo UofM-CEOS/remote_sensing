@@ -27,14 +27,15 @@ def dhus_download(prod_tups, download, download_dir, auth):
     if download == "manifest":
         # Skeleton string to receive prefix URI and UUID for one product
         uri_skel = "{0}/Nodes('{1}.SAFE')/Nodes('manifest.safe')/$value"
-        chunk_size = 1024
+        chunk_size = 1024       # this may need more scrutiny
     else:
         # Skeleton string to receive prefix URI for one product
         uri_skel = "{}/$value"
-        chunk_size = 1024 * 1024
+        chunk_size = 1024 * 1024 # we can get very large files
 
     if not os.path.exists(download_dir):
         os.mkdir(download_dir)
+
     for title, uri in prod_tups:
 
         if download == "manifest":
@@ -66,6 +67,8 @@ def main(dhus_uri, user, password, **kwargs):
     coordinates = kwargs.get("coordinates")
     product = kwargs.get("product")
     download = kwargs.get("download")
+
+    # Prepare search query from criteria requested
     if (time_since is None and time_file is None and
         coordinates is None and product is None):
         qry_statement = "*"
@@ -111,8 +114,12 @@ def main(dhus_uri, user, password, **kwargs):
                "&rows=10000&start=0")
     dhus_qry = requests.get(qry_uri, auth=(user, password))
     qry_tree = html.fromstring(dhus_qry.content)
+    # Retrieve titles and UUIDs from 'title' and 'id' tags under 'entry'
     titles = qry_tree.xpath("//entry/title/text()")
     uuids = qry_tree.xpath("//entry/id/text()")
+    # Retrieve product and product root URI from links under entry.  We
+    # assume the former doesn't have any 'rel' tag, and the latter has the
+    # 'alternative' tag.
     # prod_uris = qry_tree.xpath("//entry//link[not(@rel)]/@href")
     root_uris = qry_tree.xpath("//entry//link[@rel='alternative']/@href")
 
