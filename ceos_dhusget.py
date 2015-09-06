@@ -158,23 +158,23 @@ if __name__ == "__main__":
     instance.
     """
     parser = argparse.ArgumentParser(description=_DESCRIPTION)
+    group = parser.add_argument_group("required arguments")
     parser.add_argument("dhus_uri",
                         help="DHuS root URI, without trailing slash ('/').")
-    parser.add_argument("-u", "--user", required=True,
-                        help="Registered Data Hub user name.")
-    parser.add_argument("-p", "--password", required=True,
-                        help="Password for registered Data Hub user.")
+    group.add_argument("-u", "--user", required=True,
+                       help="Registered Data Hub user name.")
+    group.add_argument("-p", "--password", required=True,
+                       help="Password for registered Data Hub user.")
     parser.add_argument("-t", "--time_since", type=int,
                         help=("Number of hours (integer) since the time " +
                               "the request is made to search for products"))
     parser.add_argument("-f", "--time_file", type=argparse.FileType("r"),
                         help=("Path to file containing the time of last " +
                               "successful download."))
-    parser.add_argument("-c", "--coordinates", metavar="COORD",
-                        nargs=4, type=float,
+    parser.add_argument("-c", "--coordinates", nargs=4, type=float,
+                        metavar=("lon1", "lat1", "lon2", "lat2"),
                         help=("Geographical coordinates of two opposite " +
-                              "vertices of rectangular area to search for " +
-                              "(lon1 lat1 lon2 lat2)"))
+                              "vertices of rectangular area to search for."))
     parser.add_argument("-T", "--product",
                         choices=["SLC", "GRD", "OCN", "S2MSI1C"],
                         help="Product type to search.")
