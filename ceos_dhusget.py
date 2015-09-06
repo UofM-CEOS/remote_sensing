@@ -45,13 +45,12 @@ def dhus_download(prod_tups, download, download_dir, auth):
         else:
             dwnld_uri = uri_skel.format(uri)
 
-        fn = os.path.join(download_dir, title + "_manifest_safe")
+        fname = os.path.join(download_dir, title + "_manifest_safe")
         uri_conn = requests.get(dwnld_uri, auth=auth, stream=True)
         print "Downloading {0} {1}".format(download, title)
-        with open(fn, "w") as f:
+        with open(fname, "w") as dwnf:
             for chunk in uri_conn.iter_content(chunk_size):
-                f.write(chunk)
-
+                dwnf.write(chunk)
         tstampfn = os.path.join(download_dir, ".last_time_stamp")
         with open(tstampfn, "w") as tstampf:
             tstampf.write(datetime.utcnow().isoformat())
