@@ -133,7 +133,7 @@ def main(dhus_uri, user, password, **kwargs):
         prod_dir = "PRODUCT"
         if download is None:
             msg = ("No downloads requested; product names and UUIDs " +
-                   " written to file: qry_results")
+                   "written to file: qry_results")
             print msg
         elif download == "manifest":
             dhus_download(prods, download="manifest",
