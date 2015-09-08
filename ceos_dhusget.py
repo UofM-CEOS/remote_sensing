@@ -21,7 +21,6 @@ from lxml import html
 
 __version__ = "0.1.0"
 
-
 def dhus_download(prod_tups, download, download_dir, auth):
     """Given list of tuples, download DHuS product or manifest.
 
