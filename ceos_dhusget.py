@@ -171,16 +171,16 @@ if __name__ == "__main__":
                     "retriever from a Data Hub instance.")
     parser = argparse.ArgumentParser(description=_DESCRIPTION)
     group = parser.add_argument_group("required arguments")
-    parser.add_argument("dhus_uri",
+    parser.add_argument("dhus-uri",
                         help="DHuS root URI, without trailing slash ('/').")
     group.add_argument("-u", "--user", required=True,
                        help="Registered Data Hub user name.")
     group.add_argument("-p", "--password", required=True,
                        help="Password for registered Data Hub user.")
-    parser.add_argument("-t", "--time_since", type=int,
+    parser.add_argument("-t", "--time-since", type=int,
                         help=("Number of hours (integer) since the time "
                               "the request is made to search for products"))
-    parser.add_argument("-f", "--time_file", type=argparse.FileType("r"),
+    parser.add_argument("-f", "--time-file", type=argparse.FileType("r"),
                         help=("Path to file containing the time of last "
                               "successful download."))
     parser.add_argument("-c", "--coordinates", nargs=4, type=float,
