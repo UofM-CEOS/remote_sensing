@@ -170,7 +170,7 @@ if __name__ == "__main__":
                     "retriever from a Data Hub instance.")
     parser = argparse.ArgumentParser(description=_DESCRIPTION)
     group = parser.add_argument_group("required arguments")
-    parser.add_argument("dhus-uri",
+    parser.add_argument("dhus_uri", metavar="dhus-uri",
                         help="DHuS root URI, without trailing slash ('/').")
     group.add_argument("-u", "--user", required=True,
                        help="Registered Data Hub user name.")
