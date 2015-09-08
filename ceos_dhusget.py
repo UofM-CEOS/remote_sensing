@@ -1,6 +1,19 @@
 #! /usr/bin/env python
 # pylint: disable=too-many-locals
 
+"""Query and optionally download data from Sentinel-1 Data Hub.
+
+Usage
+-----
+
+For help on using this script, type:
+
+ceos_dhusget.py -h
+
+at command line.
+
+"""
+
 import os
 import requests
 from datetime import datetime
@@ -20,7 +33,7 @@ def dhus_download(prod_tups, download, download_dir, auth):
         String indicating what to download: 'manifest' or 'product'
     download_dir: string
         String indicating path to download directory.
-    auth: tuple
+    auth : tuple
         Tuple with user and password to authenticate to DHuS.
 
     """
@@ -60,8 +73,8 @@ def dhus_download(prod_tups, download, download_dir, auth):
 def main(dhus_uri, user, password, **kwargs):
     """Query, and optionally, download products from DHuS Data Hub.
 
-    See parser help for description of arguments.  All arguments are coerced to
-    string during execution.
+    See parser help for description of arguments.  All arguments are
+    coerced to string during execution.
 
     """
     time_since = kwargs.get("time_since")
@@ -93,7 +106,7 @@ def main(dhus_uri, user, password, **kwargs):
                 except Exception:
                     dflt_last = "1970-01-01T00:00:00.000Z"
                     time_subqry = time_str.format(dflt_last)
-                    print ("Could not read time stamp in file; " +
+                    print ("Could not read time stamp in file; "
                            "assuming {}".format(dflt_last))
             # Now we have a time subquery. Remove possibly empty string
             qry_join = [x for x in [qry_statement, time_subqry] if x]
@@ -102,8 +115,8 @@ def main(dhus_uri, user, password, **kwargs):
         if coordinates is not None:
             # The polygon string takes the coordinates in the order given
             # in command line
-            poly_fstr = ("{0:.13f} {1:.13f}, {2:.13f} {1:.13f}, " +
-                         "{2:.13f} {3:.13f}, {0:.13f} {3:.13f}, " +
+            poly_fstr = ("{0:.13f} {1:.13f}, {2:.13f} {1:.13f}, "
+                         "{2:.13f} {3:.13f}, {0:.13f} {3:.13f}, "
                          "{0:.13f} {1:.13f}")
             geo_subqry1 = "(footprint:\"Intersects(POLYGON(("
             geo_subqry2 = poly_fstr.format(coordinates[0], coordinates[1],
@@ -134,7 +147,7 @@ def main(dhus_uri, user, password, **kwargs):
         manif_dir = "MANIFEST"
         prod_dir = "PRODUCT"
         if download is None:
-            msg = ("No downloads requested; product names and UUIDs " +
+            msg = ("No downloads requested; product names and UUIDs "
                    "written to file: qry_results")
             print msg
         elif download == "manifest":
@@ -154,10 +167,8 @@ def main(dhus_uri, user, password, **kwargs):
 
 if __name__ == "__main__":
     import argparse
-    _DESCRIPTION = """
-    Non-interactive Sentinel-1 product (or manifest) retriever from a Data Hub
-    instance.
-    """
+    _DESCRIPTION = ("Non-interactive Sentinel-1 product (or manifest) "
+                    "retriever from a Data Hub instance.")
     parser = argparse.ArgumentParser(description=_DESCRIPTION)
     group = parser.add_argument_group("required arguments")
     parser.add_argument("dhus_uri",
@@ -167,21 +178,21 @@ if __name__ == "__main__":
     group.add_argument("-p", "--password", required=True,
                        help="Password for registered Data Hub user.")
     parser.add_argument("-t", "--time_since", type=int,
-                        help=("Number of hours (integer) since the time " +
+                        help=("Number of hours (integer) since the time "
                               "the request is made to search for products"))
     parser.add_argument("-f", "--time_file", type=argparse.FileType("r"),
-                        help=("Path to file containing the time of last " +
+                        help=("Path to file containing the time of last "
                               "successful download."))
     parser.add_argument("-c", "--coordinates", nargs=4, type=float,
                         metavar=("lon1", "lat1", "lon2", "lat2"),
-                        help=("Geographical coordinates of two opposite " +
+                        help=("Geographical coordinates of two opposite "
                               "vertices of rectangular area to search for."))
     parser.add_argument("-T", "--product",
                         choices=["SLC", "GRD", "OCN", "S2MSI1C"],
                         help="Product type to search.")
     parser.add_argument("-d", "--download",
                         choices=["manifest", "product", "all"],
-                        help=("What to download. If not prodived, only " +
+                        help=("What to download. If not prodived, only "
                               "UUID and product names are downloaded."))
     parser.add_argument("--version", action="version",
                         version="%(prog)s {}".format(__version__))
