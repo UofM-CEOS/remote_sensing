@@ -1,4 +1,5 @@
 #! /usr/bin/env python
+# pylint: disable=too-many-locals
 
 import os
 import requests
@@ -89,7 +90,7 @@ def main(dhus_uri, user, password, **kwargs):
                     with time_file: # file already opened
                         time_infile = time_file.readline().strip()
                         time_subqry = time_str.format(time_infile)
-                except:
+                except Exception:
                     dflt_last = "1970-01-01T00:00:00.000Z"
                     time_subqry = time_str.format(dflt_last)
                     print ("Could not read time stamp in file; " +
@@ -99,13 +100,14 @@ def main(dhus_uri, user, password, **kwargs):
             qry_statement = " AND ".join(qry_join)
 
         if coordinates is not None:
+            # The polygon string takes the coordinates in the order given
+            # in command line
+            poly_fstr = ("{0:.13f} {1:.13f}, {2:.13f} {1:.13f}, " +
+                         "{2:.13f} {3:.13f}, {0:.13f} {3:.13f}, " +
+                         "{0:.13f} {1:.13f}")
             geo_subqry1 = "(footprint:\"Intersects(POLYGON(("
-            geo_subqry2 = ("{0:.13f} {1:.13f}, {2:.13f} {1:.13f}, " +
-                           "{2:.13f} {3:.13f}, {0:.13f} {3:.13f}, " +
-                           "{0:.13f} {1:.13f}").format(coordinates[0],
-                                                       coordinates[1],
-                                                       coordinates[2],
-                                                       coordinates[3])
+            geo_subqry2 = poly_fstr.format(coordinates[0], coordinates[1],
+                                           coordinates[2], coordinates[3])
             geo_subqry = geo_subqry1 + geo_subqry2 + ")))\")"
             qry_join = [x for x in [qry_statement, geo_subqry] if x]
             qry_statement = " AND ".join(qry_join)
