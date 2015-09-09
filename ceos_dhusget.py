@@ -28,7 +28,7 @@ def dhus_download(prod_tups, download, download_dir, auth):
     prod_tups : list
         List of tuples with titles and URI to download.
     download : string
-        String indicating what to download: 'manifest' or 'product'
+        String indicating what to download: 'manifest' or 'product'.
     download_dir: string
         String indicating path to download directory.
     auth : tuple
@@ -68,19 +68,9 @@ def dhus_download(prod_tups, download, download_dir, auth):
         tstampf.write(datetime.utcnow().isoformat())
 
 
-def main(dhus_uri, user, password, **kwargs):
-    """Query, and optionally, download products from DHuS Data Hub.
-
-    See parser help for description of arguments.  All arguments are
-    coerced to string during execution.
+def mkqry_statement(time_since, time_file, coordinates, product):
+    """Construct the OpenSearch query statement for DHuS URI.
     """
-    time_since = kwargs.get("time_since")
-    time_file = kwargs.get("time_file")
-    coordinates = kwargs.get("coordinates")
-    product = kwargs.get("product")
-    download = kwargs.get("download")
-
-    # Prepare search query from criteria requested
     if (time_since is None and time_file is None and
         coordinates is None and product is None):
         qry_statement = "*"
@@ -121,6 +111,25 @@ def main(dhus_uri, user, password, **kwargs):
             geo_subqry = geo_subqry1 + geo_subqry2 + ")))\")"
             qry_join = [x for x in [qry_statement, geo_subqry] if x]
             qry_statement = " AND ".join(qry_join)
+
+    return qry_statement
+
+
+def main(dhus_uri, user, password, **kwargs):
+    """Query, and optionally, download products from DHuS Data Hub.
+
+    See parser help for description of arguments.  All arguments are
+    coerced to string during execution.
+    """
+    time_since = kwargs.get("time_since")
+    time_file = kwargs.get("time_file")
+    coordinates = kwargs.get("coordinates")
+    product = kwargs.get("product")
+    download = kwargs.get("download")
+
+    # Prepare search query from criteria requested
+    qry_statement = mkqry_statement(time_since, time_file,
+                                    coordinates, product)
 
     # The final query URI is ready to be created
     qry_uri = (dhus_uri + "/search?q=" + qry_statement +
