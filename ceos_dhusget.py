@@ -11,7 +11,6 @@ For help on using this script, type:
 ceos_dhusget.py -h
 
 at command line.
-
 """
 
 import os
@@ -34,7 +33,6 @@ def dhus_download(prod_tups, download, download_dir, auth):
         String indicating path to download directory.
     auth : tuple
         Tuple with user and password to authenticate to DHuS.
-
     """
 
     chunk_size_base = 1024      # this may need more scrutiny
@@ -64,9 +62,10 @@ def dhus_download(prod_tups, download, download_dir, auth):
         with open(fname, "w") as dwnf:
             for chunk in uri_conn.iter_content(chunk_size):
                 dwnf.write(chunk)
-        tstampfn = os.path.join(download_dir, ".last_time_stamp")
-        with open(tstampfn, "w") as tstampf:
-            tstampf.write(datetime.utcnow().isoformat())
+
+    tstampfn = os.path.join(download_dir, ".last_time_stamp")
+    with open(tstampfn, "w") as tstampf:
+        tstampf.write(datetime.utcnow().isoformat())
 
 
 def main(dhus_uri, user, password, **kwargs):
@@ -74,7 +73,6 @@ def main(dhus_uri, user, password, **kwargs):
 
     See parser help for description of arguments.  All arguments are
     coerced to string during execution.
-
     """
     time_since = kwargs.get("time_since")
     time_file = kwargs.get("time_file")
