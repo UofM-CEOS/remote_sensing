@@ -17,6 +17,7 @@ import os
 import requests
 from datetime import datetime
 from lxml import html
+import numpy as np
 
 __version__ = "0.1.0"
 
@@ -68,17 +69,94 @@ def dhus_download(prod_tups, download, download_dir, auth):
         tstampf.write(datetime.utcnow().isoformat())
 
 
+def mkqry_polygons(coordinates, max_len=10):
+    """Construct polygon-subsetting part of DHuS query.
+
+    If the requested coordinates imply an area larger than 10 degrees in
+    either dimension, then return a series of query strings with smaller
+    subpolygons covering the requested area.
+
+    Parameters
+    ----------
+    coordinates : list
+        List of 4 elements (lon1, lat1, lon2, lat2) with longitude and
+        latitude coordinates for lower left and upper right corners of
+        area of interest rectangle.
+    max_len : scalar or list
+        Maximum length (decimal geographical degrees) for sides of area
+        of interest rectangle.  If scalar, it applies to both `x` and `y`
+        coordinates, otherwise a 2-element list specifying maximum length
+        for `x` and `y`, respectively.
+
+    Returns
+    -------
+    A list of strings corresponding to the polygon query for each subpolygon
+    generated.  The first and last vertices of each subpolygon are the same
+    for closure.
+    """
+    xstep = max_len if np.isscalar(max_len) else max_len[0]
+    ystep = max_len if np.isscalar(max_len) else max_len[1]
+    lons = [coordinates[0], coordinates[2]]
+    lats = [coordinates[1], coordinates[3]]
+    xy_range = [np.diff(lons), np.diff(lats)]
+
+    qry_beg = "(footprint:\"Intersects(POLYGON(("
+    qry_end = ")))\")"
+    polygs = []
+
+    if xy_range[0] > xstep or xy_range[1] > ystep:
+        # Calculate how many samples we need for linspace.  The ceiling is
+        # required to cover the last step, and then add 2 to accomodate for
+        # the inclusion of the end points.
+        xn = np.ceil(xy_range[0] / xstep) + 2
+        yn = np.ceil(xy_range[1] / ystep) + 2
+        xgrd = np.linspace(lons[0], lons[1], xn)
+        ygrd = np.linspace(lats[0], lats[1], yn)
+        # Create longitude and latitude grids of dimension (yn, xn).  The
+        # elements of the longitude grid are the longitude coordinates
+        # along the rows, where rows are identical.  The elements of the
+        # latitude grid are the latitude coordinates along the columns,
+        # where columns are identical.
+        longrd, latgrd = np.meshgrid(xgrd, ygrd, sparse=False)
+        # Above is just an indexing trick to allow us to loop through each
+        # longitude and latitude properly below.  Note that the last
+        # coordinates are excluded from the looping indices since we need
+        # to reach current coordinate plus one.
+        for i in range(int(xn) - 1):
+            for j in range(int(yn) - 1):
+                verts = [(longrd[j, i], latgrd[j, i]), # lower left
+                         (longrd[j, i + 1], latgrd[j, i]), # lower right
+                         (longrd[j, i + 1], latgrd[j + 1, i]), # upper right
+                         (longrd[j, i], latgrd[j + 1, i]),     # upper left
+                         (longrd[j, i], latgrd[j, i])]         # close
+                poly_fstr = ("{0[0][0]:.13f} {0[0][1]:.13f}, "
+                             "{0[1][0]:.13f} {0[1][1]:.13f}, "
+                             "{0[2][0]:.13f} {0[2][1]:.13f}, "
+                             "{0[3][0]:.13f} {0[3][1]:.13f}, "
+                             "{0[4][0]:.13f} {0[4][1]:.13f}")
+                polygs.append(qry_beg + poly_fstr.format(verts) + qry_end)
+    else:
+        poly_fstr = ("{0[0]:.13f} {0[1]:.13f}, " # lower left
+                     "{0[2]:.13f} {0[1]:.13f}, " # lower right
+                     "{0[2]:.13f} {0[3]:.13f}, " # upper right
+                     "{0[0]:.13f} {0[3]:.13f}, " # upper left
+                     "{0[0]:.13f} {0[1]:.13f}")  # close
+        polygs.append(qry_beg + poly_fstr.format(coordinates) + qry_end)
+
+    return polygs
+
+
 def mkqry_statement(time_since, time_file, coordinates, product):
     """Construct the OpenSearch query statement for DHuS URI.
     """
     if (time_since is None and time_file is None and
         coordinates is None and product is None):
-        qry_statement = "*"
+        qry_statement = ["*"]
     else:
-        qry_statement = ""
+        qry_statement = []
 
         if product is not None:
-            qry_statement = "producttype:{}".format(product)
+            qry_statement.append("producttype:{}".format(product))
 
         if time_since is not None or time_file is not None:
             if time_since is not None: # overrides time_file
@@ -95,22 +173,23 @@ def mkqry_statement(time_since, time_file, coordinates, product):
                     time_subqry = time_str.format(dflt_last)
                     print ("Could not read time stamp in file; "
                            "assuming {}".format(dflt_last))
-            # Now we have a time subquery. Remove possibly empty string
-            qry_join = [x for x in [qry_statement, time_subqry] if x]
-            qry_statement = " AND ".join(qry_join)
+            # Now we have a time subquery
+            qry_statement.append(time_subqry)
 
+        # Remove empty query elements and join the rest
+        qry_statement = [x for x in qry_statement if x]
         if coordinates is not None:
-            # The polygon string takes the coordinates in the order given
-            # in command line
-            poly_fstr = ("{0:.13f} {1:.13f}, {2:.13f} {1:.13f}, "
-                         "{2:.13f} {3:.13f}, {0:.13f} {3:.13f}, "
-                         "{0:.13f} {1:.13f}")
-            geo_subqry1 = "(footprint:\"Intersects(POLYGON(("
-            geo_subqry2 = poly_fstr.format(coordinates[0], coordinates[1],
-                                           coordinates[2], coordinates[3])
-            geo_subqry = geo_subqry1 + geo_subqry2 + ")))\")"
-            qry_join = [x for x in [qry_statement, geo_subqry] if x]
-            qry_statement = " AND ".join(qry_join)
+            # The polygon string constructor takes the coordinates in the
+            # order given in command line.  The DHuS only limits search
+            # polygons to 10 degrees square.
+            geo_subqry = mkqry_polygons(coordinates, max_len=10)
+            for idx, item in enumerate(geo_subqry):
+                # We get a string for item, so make it a single-element
+                # list to allow concatenation, and output a list
+                geo_subqry[idx] = qry_statement + [item]
+            qry_statement = geo_subqry
+        else:                   # ensure we return list
+            qry_statement = [" AND ".join(qry_statement)]
 
     return qry_statement
 
