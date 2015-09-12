@@ -100,6 +100,11 @@ def mkqry_polygons(coordinates, max_len=10):
     lats = [coordinates[1], coordinates[3]]
     xy_range = [np.diff(lons), np.diff(lats)]
 
+    if np.any(xy_range < 0):
+        msg = ("Upper right coordinates must be larger than "
+               "lower left coordinates.")
+        raise Exception(msg)
+
     qry_beg = "(footprint:\"Intersects(POLYGON(("
     qry_end = ")))\")"
     polygs = []
@@ -148,6 +153,10 @@ def mkqry_polygons(coordinates, max_len=10):
 
 def mkqry_statement(time_since, time_file, coordinates, product):
     """Construct the OpenSearch query statement for DHuS URI.
+
+    Returns
+    -------
+    A list of strings corresponding to a query string to send to DHuS.
     """
     if (time_since is None and time_file is None and
         coordinates is None and product is None):
@@ -176,20 +185,18 @@ def mkqry_statement(time_since, time_file, coordinates, product):
             # Now we have a time subquery
             qry_statement.append(time_subqry)
 
-        # Remove empty query elements and join the rest
+        # Remove empty query elements and join the rest into single string
         qry_statement = [x for x in qry_statement if x]
+        qry_statement = " AND ".join(qry_statement)
         if coordinates is not None:
             # The polygon string constructor takes the coordinates in the
-            # order given in command line.  The DHuS only limits search
-            # polygons to 10 degrees square.
+            # order given in command line.  The DHuS limits searches to
+            # polygons 10 degrees square.
             geo_subqry = mkqry_polygons(coordinates, max_len=10)
             for idx, item in enumerate(geo_subqry):
-                # We get a string for item, so make it a single-element
-                # list to allow concatenation, and output a list
-                geo_subqry[idx] = qry_statement + [item]
+                item_new = [x for x in [qry_statement, item] if x]
+                geo_subqry[idx] = " AND ".join(item_new)
             qry_statement = geo_subqry
-        else:                   # ensure we return list
-            qry_statement = [" AND ".join(qry_statement)]
 
     return qry_statement
 
@@ -206,23 +213,28 @@ def main(dhus_uri, user, password, **kwargs):
     product = kwargs.get("product")
     download = kwargs.get("download")
 
-    # Prepare search query from criteria requested
+    # Prepare list of search queries from criteria requested
     qry_statement = mkqry_statement(time_since, time_file,
                                     coordinates, product)
 
-    # The final query URI is ready to be created
-    qry_uri = (dhus_uri + "/search?q=" + qry_statement +
-               "&rows=10000&start=0")
-    dhus_qry = requests.get(qry_uri, auth=(user, password))
-    qry_tree = html.fromstring(dhus_qry.content)
-    # Retrieve titles and UUIDs from 'title' and 'id' tags under 'entry'
-    titles = qry_tree.xpath("//entry/title/text()")
-    uuids = qry_tree.xpath("//entry/id/text()")
-    # Retrieve product and product root URI from links under entry.  We
-    # assume the former doesn't have any 'rel' tag, and the latter has the
-    # 'alternative' tag.
-    # prod_uris = qry_tree.xpath("//entry//link[not(@rel)]/@href")
-    root_uris = qry_tree.xpath("//entry//link[@rel='alternative']/@href")
+    titles = []
+    uuids = []
+    root_uris = []
+    for qry in qry_statement:
+        # The final query URI is ready to be created
+        qry_uri = (dhus_uri + "/search?q=" + qry + "&rows=10000&start=0")
+        dhus_qry = requests.get(qry_uri, auth=(user, password))
+        qry_tree = html.fromstring(dhus_qry.content)
+        # Retrieve titles and UUIDs from 'title' and 'id' tags under
+        # 'entry'
+        titles += qry_tree.xpath("//entry/title/text()")
+        uuids += qry_tree.xpath("//entry/id/text()")
+        # Retrieve product and product root URI from links under entry.  We
+        # assume the former doesn't have any 'rel' tag, and the latter has
+        # the 'alternative' tag.
+        # prod_uris = qry_tree.xpath("//entry//link[not(@rel)]/@href")
+        root_uri_xpath = "//entry//link[@rel='alternative']/@href"
+        root_uris += qry_tree.xpath(root_uri_xpath)
 
     prods = zip(titles, root_uris) # we only need these for downloading
     if len(prods) > 0:
