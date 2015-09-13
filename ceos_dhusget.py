@@ -94,6 +94,7 @@ def mkqry_polygons(coordinates, max_len=10):
     generated.  The first and last vertices of each subpolygon are the same
     for closure.
     """
+
     xstep = max_len if np.isscalar(max_len) else max_len[0]
     ystep = max_len if np.isscalar(max_len) else max_len[1]
     lons = [coordinates[0], coordinates[2]]
@@ -158,6 +159,7 @@ def mkqry_statement(time_since, time_file, coordinates, product):
     -------
     A list of strings corresponding to a query string to send to DHuS.
     """
+
     if (time_since is None and time_file is None and
         coordinates is None and product is None):
         qry_statement = ["*"]
@@ -207,6 +209,7 @@ def main(dhus_uri, user, password, **kwargs):
     See parser help for description of arguments.  All arguments are
     coerced to string during execution.
     """
+
     time_since = kwargs.get("time_since")
     time_file = kwargs.get("time_file")
     coordinates = kwargs.get("coordinates")
@@ -217,9 +220,7 @@ def main(dhus_uri, user, password, **kwargs):
     qry_statement = mkqry_statement(time_since, time_file,
                                     coordinates, product)
 
-    titles = []
-    uuids = []
-    root_uris = []
+    titles = []; uuids = []; root_uris = []
     for qry in qry_statement:
         # The final query URI is ready to be created
         qry_uri = (dhus_uri + "/search?q=" + qry + "&rows=10000&start=0")
