@@ -27,13 +27,17 @@ def dhus_download(prod_tups, download, download_dir, auth):
     Parameters
     ----------
     prod_tups : list
-        List of tuples with titles and URI to download.
+        List of tuples with titles, URIs, and UUIDs to download.
     download : string
         String indicating what to download: 'manifest' or 'product'.
     download_dir: string
         String indicating path to download directory.
     auth : tuple
         Tuple with user and password to authenticate to DHuS.
+
+    Note
+    ----
+    The UUID element of parameter `prod_tups` is currently ignored.
     """
 
     chunk_size_base = 1024      # this may need more scrutiny
@@ -50,7 +54,7 @@ def dhus_download(prod_tups, download, download_dir, auth):
     if not os.path.exists(download_dir):
         os.mkdir(download_dir)
 
-    for title, uri in prod_tups:
+    for title, uri, uuid in prod_tups:
 
         if download == "manifest":
             dwnld_uri = uri_skel.format(uri, title)
@@ -58,11 +62,16 @@ def dhus_download(prod_tups, download, download_dir, auth):
             dwnld_uri = uri_skel.format(uri)
 
         fname = os.path.join(download_dir, title + "_manifest_safe")
-        uri_conn = requests.get(dwnld_uri, auth=auth, stream=True)
-        print "Downloading {0} {1}".format(download, title)
-        with open(fname, "w") as dwnf:
-            for chunk in uri_conn.iter_content(chunk_size):
-                dwnf.write(chunk)
+
+        if os.path.exists(fname):
+            print "Skipping existing file: {}".format(fname)
+            continue
+        else:
+            uri_conn = requests.get(dwnld_uri, auth=auth, stream=True)
+            print "Downloading {0} {1}".format(download, title)
+            with open(fname, "w") as dwnf:
+                for chunk in uri_conn.iter_content(chunk_size):
+                    dwnf.write(chunk)
 
     tstampfn = os.path.join(download_dir, ".last_time_stamp")
     with open(tstampfn, "w") as tstampf:
@@ -228,19 +237,26 @@ def main(dhus_uri, user, password, **kwargs):
         qry_tree = html.fromstring(dhus_qry.content)
         # Retrieve titles and UUIDs from 'title' and 'id' tags under
         # 'entry'
-        titles += qry_tree.xpath("//entry/title/text()")
-        uuids += qry_tree.xpath("//entry/id/text()")
+        titles.append(qry_tree.xpath("//entry/title/text()"))
+        uuids.append(qry_tree.xpath("//entry/id/text()"))
         # Retrieve product and product root URI from links under entry.  We
         # assume the former doesn't have any 'rel' tag, and the latter has
         # the 'alternative' tag.
         # prod_uris = qry_tree.xpath("//entry//link[not(@rel)]/@href")
         root_uri_xpath = "//entry//link[@rel='alternative']/@href"
-        root_uris += qry_tree.xpath(root_uri_xpath)
+        root_uris.append(qry_tree.xpath(root_uri_xpath))
 
-    prods = zip(titles, root_uris) # we only need these for downloading
+    # Flatten lists (we ended up with one list per subpolygon search).
+    # These may contain duplicates at the boundary of each subpolygon.
+    titles = [y for x in titles for y in x]
+    uuids = [y for x in uuids for y in x]
+    root_uris = [y for x in root_uris for y in x]
+    # Remove duplicates with set(); forget ordering
+    prods = list(set(zip(titles, root_uris, uuids)))
+
     if len(prods) > 0:
         with open("qry_results", "w") as qryfile:
-            for tup in zip(titles, uuids, root_uris):
+            for tup in prods:
                 qryfile.write(" ".join(str(x) for x in tup) + "\n")
         manif_dir = "MANIFEST"
         prod_dir = "PRODUCT"
