@@ -1,0 +1,8 @@
+#+STARTUP: content indent hideblocks
+#+TITLE: Remote Sensing
+#+AUTHOR:
+#+OPTIONS: ^:{}
+#+OPTIONS: toc:nil
+
+
+CEOS tools for working with remote sensing data and plots.
