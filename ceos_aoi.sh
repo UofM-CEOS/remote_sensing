@@ -77,27 +77,34 @@ echo ${BEA_REG[0]} ${BEA_REG[1]} ${BEA_REG[2]} ${BEA_REG[3]} | \
 
 # AOIs
 ${GMT} pscoast -R${NAR_GMTREG} -J${NAR_PROJ} -B4/1WeSn -Wfaint -Df -A0/0/1 \
-       -G235/235/210 --MAP_ANNOT_OBLIQUE=1 > ${PSFILENAME%.ps}_nares.ps
+       -G235/235/210 --MAP_ANNOT_OBLIQUE=1 \
+       > Nares_Strait/${PSFILENAME%.ps}_nares.ps
 ${GMT} pscoast -R${BAF_GMTREG} -J${BAF_PROJ} -B4/2WeSn -Wfaint -Df -A0/0/1 \
-       -G235/235/210 --MAP_ANNOT_OBLIQUE=1 > ${PSFILENAME%.ps}_baffin.ps
+       -G235/235/210 --MAP_ANNOT_OBLIQUE=1 \
+       > Baffin_Bay/${PSFILENAME%.ps}_baffin.ps
 ${GMT} pscoast -R${HUD_GMTREG} -J${HUD_PROJ} -B4/5WeSn -Wfaint -Df -A0/0/1 \
-       -G235/235/210 --MAP_ANNOT_OBLIQUE=1 > ${PSFILENAME%.ps}_hudson.ps
+       -G235/235/210 --MAP_ANNOT_OBLIQUE=1 \
+       > Hudson_Bay/${PSFILENAME%.ps}_hudson.ps
 ${GMT} pscoast -R${CTR_GMTREG} -J${CTR_PROJ} -B10/5WeSn -Wfaint -Df -A0/0/1 \
-       -G235/235/210 --MAP_ANNOT_OBLIQUE=1 > ${PSFILENAME%.ps}_central.ps
+       -G235/235/210 --MAP_ANNOT_OBLIQUE=1 \
+       > Central_Arctic/${PSFILENAME%.ps}_central.ps
 ${GMT} pscoast -R${BEA_GMTREG} -J${BEA_PROJ} -B10/2WeSn -Wfaint -Df -A0/0/1 \
-       -G235/235/210 --MAP_ANNOT_OBLIQUE=1 > ${PSFILENAME%.ps}_beaufort.ps
+       -G235/235/210 --MAP_ANNOT_OBLIQUE=1 \
+       > Beaufort_Sea/${PSFILENAME%.ps}_beaufort.ps
 
 # ${GMT} ps2raster -A -P -TF -F${PSFILENAME%.ps} ${PSFILENAME} \
 #        ${PSFILENAME%.ps}_nares.ps ${PSFILENAME%.ps}_hudson.ps \
 #        ${PSFILENAME%.ps}_central.ps ${PSFILENAME%.ps}_beaufort.ps
 ${GMT} ps2raster -A -P -Tf ${PSFILENAME} \
-       ${PSFILENAME%.ps}_nares.ps ${PSFILENAME%.ps}_baffin.ps \
-       ${PSFILENAME%.ps}_hudson.ps ${PSFILENAME%.ps}_central.ps \
-       ${PSFILENAME%.ps}_beaufort.ps
+       Nares_Strait/${PSFILENAME%.ps}_nares.ps \
+       Baffin_Bay/${PSFILENAME%.ps}_baffin.ps \
+       Hudson_Bay/${PSFILENAME%.ps}_hudson.ps \
+       Central_Arctic/${PSFILENAME%.ps}_central.ps \
+       Beaufort_Sea/${PSFILENAME%.ps}_beaufort.ps
 
 
 #_ + Clean up -------------------------------------------------------------
-rm ${PSFILENAME%.ps}*.ps ${LEGENDFILENAME}
+rm ${PSFILENAME%.ps}*.ps */${PSFILENAME%.ps}*.ps
 
 # -------------------------------------------------------------------------
 # phispida_hudsonb.sh ends here
