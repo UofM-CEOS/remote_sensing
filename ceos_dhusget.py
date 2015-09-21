@@ -58,10 +58,10 @@ def dhus_download(prod_tups, download, download_dir, auth):
 
         if download == "manifest":
             dwnld_uri = uri_skel.format(uri, title)
+            fname = os.path.join(download_dir, title + "_manifest_safe")
         else:
             dwnld_uri = uri_skel.format(uri)
-
-        fname = os.path.join(download_dir, title + "_manifest_safe")
+            fname = os.path.join(download_dir, title)
 
         if os.path.exists(fname):
             print "Skipping existing file: {}".format(fname)
