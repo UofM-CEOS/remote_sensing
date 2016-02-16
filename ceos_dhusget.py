@@ -14,8 +14,8 @@ at command line.
 """
 
 import os
-import requests
 from datetime import datetime
+import requests
 from lxml import html
 import numpy as np
 
