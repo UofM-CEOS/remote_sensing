@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 # pylint: disable=too-many-locals
 
-"""Query and optionally download data from Sentinel-1 Data Hub.
+"""Query and optionally download data from Sentinels Scientific Data Hub
 
 Usage
 -----
@@ -11,15 +11,20 @@ For help on using this script, type:
 ceos_dhusget.py -h
 
 at command line.
+
 """
 
+import argparse
 import os
+import logging
+import hashlib
 from datetime import datetime
 import requests
 from lxml import html
 import numpy as np
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
+
 
 def dhus_download(prod_tups, download, download_dir, auth):
     """Given list of tuples, download DHuS product or manifest.
@@ -29,7 +34,7 @@ def dhus_download(prod_tups, download, download_dir, auth):
     prod_tups : list
         List of tuples with titles, URIs, and UUIDs to download.
     download : string
-        String indicating what to download: 'manifest' or 'product'.
+        String indicating what to download: 'manifest', 'product', or 'MD5'.
     download_dir: string
         String indicating path to download directory.
     auth : tuple
@@ -43,12 +48,15 @@ def dhus_download(prod_tups, download, download_dir, auth):
     chunk_size_base = 1024      # this may need more scrutiny
 
     if download == "manifest":
-        # Skeleton string to receive prefix URI and UUID for one product
-        uri_skel = "{0}/Nodes('{1}.SAFE')/Nodes('manifest.safe')/$value"
+        # Skeleton string to receive prefix URI and UUID for one product.
+        # Note there's a trailing slash on the URI in {0}
+        uri_skel = "{0}Nodes('{1}.SAFE')/Nodes('manifest.safe')/$value"
         chunk_size = chunk_size_base
     else:
         # Skeleton string to receive prefix URI for one product
-        uri_skel = "{}/$value"
+        # Note there's a trailing slash on the URI in {}
+        uri_skel = "{}$value"
+        uri_skel_md5 = "{}Checksum/Value/$value"
         chunk_size = chunk_size_base ** 2  # we can get very large files
 
     if not os.path.exists(download_dir):
@@ -61,17 +69,24 @@ def dhus_download(prod_tups, download, download_dir, auth):
             fname = os.path.join(download_dir, title + "_manifest_safe")
         else:
             dwnld_uri = uri_skel.format(uri)
+            md5_uri = uri_skel_md5.format(uri)
             fname = os.path.join(download_dir, title)
 
         if os.path.exists(fname):
-            print "Skipping existing file: {}".format(fname)
+            logger.warning("Skipping existing file: %s", fname)
             continue
         else:
             uri_conn = requests.get(dwnld_uri, auth=auth, stream=True)
-            print "Downloading {0} {1}".format(download, title)
+            logger.info("Downloading %s %s", download, title)
             with open(fname, "w") as dwnf:
                 for chunk in uri_conn.iter_content(chunk_size):
                     dwnf.write(chunk)
+            with open(fname, "rb") as f:
+                md5_local = hashlib.md5(f.read()).hexdigest()
+            md5_remote = requests.get(md5_uri, auth=auth)
+            if md5_local.upper() != md5_remote.content:
+                logger.error("Failed MD5 checksum %s %s %s",
+                             title, uri, uuid)
 
     tstampfn = os.path.join(download_dir, ".last_time_stamp")
     with open(tstampfn, "w") as tstampf:
@@ -139,11 +154,11 @@ def mkqry_polygons(coordinates, max_len=10):
         # to reach current coordinate plus one.
         for i in range(int(xn) - 1):
             for j in range(int(yn) - 1):
-                verts = [(longrd[j, i], latgrd[j, i]), # lower left
-                         (longrd[j, i + 1], latgrd[j, i]), # lower right
-                         (longrd[j, i + 1], latgrd[j + 1, i]), # upper right
-                         (longrd[j, i], latgrd[j + 1, i]),     # upper left
-                         (longrd[j, i], latgrd[j, i])]         # close
+                verts = [(longrd[j, i], latgrd[j, i]),     # lower left
+                         (longrd[j, i + 1], latgrd[j, i]),  # lower right
+                         (longrd[j, i + 1], latgrd[j + 1, i]),  # upper right
+                         (longrd[j, i], latgrd[j + 1, i]),  # upper left
+                         (longrd[j, i], latgrd[j, i])]      # close
                 poly_fstr = ("{0[0][0]:.13f} {0[0][1]:.13f}, "
                              "{0[1][0]:.13f} {0[1][1]:.13f}, "
                              "{0[2][0]:.13f} {0[2][1]:.13f}, "
@@ -151,17 +166,22 @@ def mkqry_polygons(coordinates, max_len=10):
                              "{0[4][0]:.13f} {0[4][1]:.13f}")
                 polygs.append(qry_beg + poly_fstr.format(verts) + qry_end)
     else:
-        poly_fstr = ("{0[0]:.13f} {0[1]:.13f}, " # lower left
-                     "{0[2]:.13f} {0[1]:.13f}, " # lower right
-                     "{0[2]:.13f} {0[3]:.13f}, " # upper right
-                     "{0[0]:.13f} {0[3]:.13f}, " # upper left
-                     "{0[0]:.13f} {0[1]:.13f}")  # close
+        poly_fstr = ("{0[0]:.13f} {0[1]:.13f}, "  # lower left
+                     "{0[2]:.13f} {0[1]:.13f}, "  # lower right
+                     "{0[2]:.13f} {0[3]:.13f}, "  # upper right
+                     "{0[0]:.13f} {0[3]:.13f}, "  # upper left
+                     "{0[0]:.13f} {0[1]:.13f}")   # close
         polygs.append(qry_beg + poly_fstr.format(coordinates) + qry_end)
 
     return polygs
 
 
-def mkqry_statement(time_since, time_file, coordinates, product):
+def mkqry_statement(mission_name, instrument_name, time_since,
+                    coordinates, product, time_file=None,
+                    ingestion_time_from="1970-01-01T00:00:00.000Z",
+                    ingestion_time_to="NOW",
+                    sensing_time_from="1970-01-01T00:00:00.000Z",
+                    sensing_time_to="NOW"):
     """Construct the OpenSearch query statement for DHuS URI.
 
     Returns
@@ -169,32 +189,50 @@ def mkqry_statement(time_since, time_file, coordinates, product):
     A list of strings corresponding to a query string to send to DHuS.
     """
 
-    if (time_since is None and time_file is None and
-        coordinates is None and product is None):
+    main_opts = [mission_name, instrument_name, time_since, coordinates,
+                 product, time_file, ingestion_time_from, ingestion_time_to,
+                 sensing_time_from, sensing_time_to]
+    if all(v is None for v in main_opts):
         qry_statement = ["*"]
     else:
         qry_statement = []
-
+        if mission_name is not None:
+            qry_statement.append("platformname:{}".format(product))
+        if instrument_name is not None:
+            qry_statement.append("instrumentshortname:{}".format(product))
         if product is not None:
             qry_statement.append("producttype:{}".format(product))
-
-        if time_since is not None or time_file is not None:
-            if time_since is not None: # overrides time_file
-                time_str = "ingestiondate:[NOW-{}HOURS TO NOW]"
-                time_subqry = time_str.format(time_since)
-            else:               # we have time_file
-                time_str = "ingestiondate:[{} TO NOW]"
+        # Subset with time_since, time_file, ingestion_time_from,
+        # ingestion_time_to
+        ingestion_opts = [main_opts[i] for i in [2, 5, 6, 7]]
+        # Check if we need to set ingestiondate time subquery
+        if any(v is not None for v in ingestion_opts):
+            time_str = "ingestiondate:[{0} TO {1}]"
+            if time_file is not None and ingestion_time_to is not None:
                 try:
-                    with time_file: # file already opened
+                    with time_file:  # file already opened
                         time_infile = time_file.readline().strip()
-                        time_subqry = time_str.format(time_infile)
+                        time_subqry = time_str.format(time_infile,
+                                                      ingestion_time_to)
                 except Exception:
                     dflt_last = "1970-01-01T00:00:00.000Z"
-                    time_subqry = time_str.format(dflt_last)
-                    print ("Could not read time stamp in file; "
-                           "assuming {}".format(dflt_last))
+                    time_subqry = time_str.format(dflt_last,
+                                                  ingestion_time_to)
+                    logger.warning("Could not read time stamp in file; "
+                                   "assuming %s", dflt_last)
+            elif time_since is not None:  # modify time_str
+                time_str = "ingestiondate:[NOW-{}HOURS TO NOW]"
+                time_subqry = time_str.format(time_since)
+            else:  # assume ingestion_time_* args not None (defaults)
+                time_subqry = time_str.format(ingestion_time_from,
+                                              ingestion_time_to)
             # Now we have a time subquery
             qry_statement.append(time_subqry)
+
+        if sensing_time_from is not None and sensing_time_to is not None:
+            sensing_subqry = "beginPosition:[{0} TO {1}]"
+            qry_statement.append(sensing_subqry.format(sensing_time_from,
+                                                       sensing_time_to))
 
         # Remove empty query elements and join the rest into single string
         qry_statement = [x for x in qry_statement if x]
@@ -208,31 +246,47 @@ def mkqry_statement(time_since, time_file, coordinates, product):
                 item_new = [x for x in [qry_statement, item] if x]
                 geo_subqry[idx] = " AND ".join(item_new)
             qry_statement = geo_subqry
+        else:
+            qry_statement = [qry_statement]
 
     return qry_statement
 
 
 def main(dhus_uri, user, password, **kwargs):
-    """Query, and optionally, download products from DHuS Data Hub.
+    """Query, and optionally, download products from DHuS Data Hub
 
     See parser help for description of arguments.  All arguments are
     coerced to string during execution.
     """
-
-    time_since = kwargs.get("time_since")
-    time_file = kwargs.get("time_file")
-    coordinates = kwargs.get("coordinates")
-    product = kwargs.get("product")
-    download = kwargs.get("download")
+    mission_name = kwargs.pop("mission_name")
+    instrument_name = kwargs.pop("instrument_name")
+    time_since = kwargs.pop("time_since")
+    ingestion_time_from = kwargs.pop("ingestion_time_from")
+    ingestion_time_to = kwargs.pop("ingestion_time_to")
+    sensing_time_from = kwargs.pop("sensing_time_from")
+    sensing_time_to = kwargs.pop("sensing_time_to")
+    coordinates = kwargs.pop("coordinates")
+    product = kwargs.pop("product")
+    download = kwargs.pop("download")
+    time_file = kwargs.pop("time_file")
 
     # Prepare list of search queries from criteria requested
-    qry_statement = mkqry_statement(time_since, time_file,
-                                    coordinates, product)
+    qry_statement = mkqry_statement(mission_name=mission_name,
+                                    instrument_name=instrument_name,
+                                    time_since=time_since,
+                                    coordinates=coordinates,
+                                    product=product, time_file=time_file,
+                                    ingestion_time_from=ingestion_time_from,
+                                    ingestion_time_to=ingestion_time_to,
+                                    sensing_time_from=sensing_time_from,
+                                    sensing_time_to=sensing_time_to)
 
-    titles = []; uuids = []; root_uris = []
+    titles = []
+    uuids = []
+    root_uris = []
     for qry in qry_statement:
         # The final query URI is ready to be created
-        qry_uri = (dhus_uri + "/search?q=" + qry + "&rows=10000&start=0")
+        qry_uri = (dhus_uri + "/search?q=" + qry + "&rows=100&start=0")
         dhus_qry = requests.get(qry_uri, auth=(user, password))
         qry_tree = html.fromstring(dhus_qry.content)
         # Retrieve titles and UUIDs from 'title' and 'id' tags under
@@ -263,7 +317,7 @@ def main(dhus_uri, user, password, **kwargs):
         if download is None:
             msg = ("No downloads requested; product names and UUIDs "
                    "written to file: qry_results")
-            print msg
+            logger.info(msg)
         elif download == "manifest":
             dhus_download(prods, download="manifest",
                           download_dir=manif_dir, auth=(user, password))
@@ -276,14 +330,15 @@ def main(dhus_uri, user, password, **kwargs):
             dhus_download(prods, download="product",
                           download_dir=prod_dir, auth=(user, password))
     else:
-        print "No products match search criteria."
+        logger.info("No products match search criteria.")
 
 
 if __name__ == "__main__":
-    import argparse
-    _DESCRIPTION = ("Non-interactive Sentinel-1 product (or manifest) "
-                    "retriever from a Data Hub instance.")
-    parser = argparse.ArgumentParser(description=_DESCRIPTION)
+    _DESCRIPTION = ("Non-interactive Sentinels product (or manifest) "
+                    "retriever from Scientific Data Hub.")
+    _FORMATERCLASS = argparse.ArgumentDefaultsHelpFormatter
+    parser = argparse.ArgumentParser(description=_DESCRIPTION,
+                                     formatter_class=_FORMATERCLASS)
     group = parser.add_argument_group("required arguments")
     parser.add_argument("dhus_uri", metavar="dhus-uri",
                         help="DHuS root URI, without trailing slash ('/').")
@@ -291,27 +346,69 @@ if __name__ == "__main__":
                        help="Registered Data Hub user name.")
     group.add_argument("-p", "--password", required=True,
                        help="Password for registered Data Hub user.")
+    parser.add_argument("-m", "--mission-name",
+                        choices=["Sentinel-1", "Sentinel-2", "Sentinel-3"],
+                        help="Mission name.")
+    parser.add_argument("-i", "--instrument-name",
+                        choices=["SAR", "MSI", "OLCI", "SLSTR", "SRAL"],
+                        help="Instrument name.")
     parser.add_argument("-t", "--time-since", type=int,
                         help=("Number of hours (integer) since the time "
                               "the request is made to search for products"))
-    parser.add_argument("-f", "--time-file", type=argparse.FileType("r"),
-                        help=("Path to file containing the time of last "
-                              "successful download."))
+    parser.add_argument("-s", "--ingestion-time-from",
+                        default="1970-01-01T00:00:00.000Z",
+                        help=("Search for products ingested after the "
+                              "specified timestamp, in ISO-8601 format "
+                              "YYYY-MM-DDThh:mm:ss.cccZ; "
+                              "e.g. 2016-10-02T06:00:00.000Z"))
+    parser.add_argument("-e", "--ingestion-time-to",
+                        default="NOW",
+                        help=("Search for products ingested before the "
+                              "specified timestamp, in ISO_8601 format "
+                              "YYYY-MM-DDThh:mm:ss.cccZ; "
+                              "e.g. 2016-10-02T06:00:00.000Z"))
+    parser.add_argument("-S", "--sensing-time-from",
+                        default="1970-01-01T00:00:00.000Z",
+                        help=("Search for products with sensing timestamp "
+                              "greater than the specified timestamp, in "
+                              "ISO-8601 format YYYY-MM-DDThh:mm:ss.cccZ; "
+                              "e.g. 2016-10-02T06:00:00.000Z"))
+    parser.add_argument("-E", "--sensing-time-to",
+                        default="NOW",
+                        help=("Search for products with sensing timestamp "
+                              "smaller than the specified timestamp, in "
+                              "ISO-8601 format YYYY-MM-DDThh:mm:ss.cccZ; "
+                              "e.g. 2016-10-02T06:00:00.000Z"))
     parser.add_argument("-c", "--coordinates", nargs=4, type=float,
                         metavar=("lon1", "lat1", "lon2", "lat2"),
                         help=("Geographical coordinates of two opposite "
                               "vertices of rectangular area to search for."))
     parser.add_argument("-T", "--product",
-                        choices=["SLC", "GRD", "OCN", "S2MSI1C"],
-                        help="Product type to search.")
+                        choices=["SLC", "GRD", "OCN", "RAW", "S2MSI1C"],
+                        help=("Product type to search. S2MSI1C is for "
+                              "Sentinel-2 only"))
     parser.add_argument("-d", "--download",
                         choices=["manifest", "product", "all"],
                         help=("What to download. If not prodived, only "
                               "UUID and product names are downloaded."))
+    parser.add_argument("-f", "--time-file", type=argparse.FileType("r"),
+                        help=("Path to file containing the time of last "
+                              "successful download."))
     parser.add_argument("--version", action="version",
                         version="%(prog)s {}".format(__version__))
     args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
     main(args.dhus_uri, args.user, args.password,
-         time_since=args.time_since, time_file=args.time_file,
+         mission_name=args.mission_name, instrument_name=args.instrument_name,
+         time_since=args.time_since,
+         ingestion_time_from=args.ingestion_time_from,
+         ingestion_time_to=args.ingestion_time_to,
+         sensing_time_from=args.sensing_time_from,
+         sensing_time_to=args.sensing_time_to,
          coordinates=args.coordinates, product=args.product,
-         download=args.download)
+         download=args.download, time_file=args.time_file)
+
+else:
+    logging.basicConfig()
+    logger = logging.getLogger(__name__)
