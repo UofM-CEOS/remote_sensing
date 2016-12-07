@@ -43,6 +43,17 @@ def dhus_download(prod_tups, download, download_dir, auth):
     Note
     ----
     The UUID element of parameter `prod_tups` is currently ignored.
+
+    Returns
+    -------
+    None
+
+    Requested files are downloaded in download_dir, and 2 files are also
+    written in that directory:
+
+      * .last_time_stamp with time stamp once finished execution.
+      * .failed_md5 with a list of failed downloads.
+
     """
 
     chunk_size_base = 1024      # this may need more scrutiny
@@ -125,6 +136,7 @@ def mkqry_polygons(coordinates, max_len=10):
     A list of strings corresponding to the polygon query for each subpolygon
     generated.  The first and last vertices of each subpolygon are the same
     for closure.
+
     """
 
     xstep = max_len if np.isscalar(max_len) else max_len[0]
@@ -190,7 +202,7 @@ def mkqry_statement(mission_name, instrument_name, time_since,
                     ingestion_time_to="NOW",
                     sensing_time_from="1970-01-01T00:00:00.000Z",
                     sensing_time_to="NOW"):
-    """Construct the OpenSearch query statement for DHuS URI.
+    """Construct the OpenSearch query statement for DHuS URI
 
     Returns
     -------
@@ -265,6 +277,7 @@ def main(dhus_uri, user, password, **kwargs):
 
     See parser help for description of arguments.  All arguments are
     coerced to string during execution.
+
     """
     mission_name = kwargs.pop("mission_name")
     instrument_name = kwargs.pop("instrument_name")
@@ -359,20 +372,24 @@ if __name__ == "__main__":
                         help="Mission name.")
     parser.add_argument("-i", "--instrument-name",
                         choices=["SAR", "MSI", "OLCI", "SLSTR", "SRAL"],
-                        help="Instrument name.")
+                        help=("Instrument name.  SAR is from Sentinel-1, "
+                              "MSI from Sentinel-2, and the rest from "
+                              "Sentinel-3"))
     parser.add_argument("-t", "--time-since", type=int,
                         help=("Number of hours (integer) since the time "
                               "the request is made to search for products"))
     parser.add_argument("-s", "--ingestion-time-from",
                         default="1970-01-01T00:00:00.000Z",
-                        help=("Search for products ingested after the "
-                              "specified timestamp, in ISO-8601 format "
+                        help=("Search for products ingested (published on "
+                              "the Data Hub) after the specified "
+                              "timestamp, in ISO-8601 format "
                               "YYYY-MM-DDThh:mm:ss.cccZ; "
                               "e.g. 2016-10-02T06:00:00.000Z"))
     parser.add_argument("-e", "--ingestion-time-to",
                         default="NOW",
-                        help=("Search for products ingested before the "
-                              "specified timestamp, in ISO_8601 format "
+                        help=("Search for products ingested (published on "
+                              "the Data Hub) before the specified "
+                              "timestamp, in ISO_8601 format "
                               "YYYY-MM-DDThh:mm:ss.cccZ; "
                               "e.g. 2016-10-02T06:00:00.000Z"))
     parser.add_argument("-S", "--sensing-time-from",
@@ -393,8 +410,10 @@ if __name__ == "__main__":
                               "vertices of rectangular area to search for."))
     parser.add_argument("-T", "--product",
                         choices=["SLC", "GRD", "OCN", "RAW", "S2MSI1C"],
-                        help=("Product type to search. S2MSI1C is for "
-                              "Sentinel-2 only"))
+                        help=("Product type to search. RAW corresponds to "
+                              "Level-0 products, SLC and GRD to Level-1, "
+                              "OCN to Level-2 products, and S2MSI1C to "
+                              "Level-1C products from Sentinel-2."))
     parser.add_argument("-d", "--download",
                         choices=["manifest", "product", "all"],
                         help=("What to download. If not prodived, only "
