@@ -62,6 +62,7 @@ def dhus_download(prod_tups, download, download_dir, auth):
     if not os.path.exists(download_dir):
         os.mkdir(download_dir)
 
+    failed_tups = []
     for title, uri, uuid in prod_tups:
 
         if download == "manifest":
@@ -87,10 +88,17 @@ def dhus_download(prod_tups, download, download_dir, auth):
             if md5_local.upper() != md5_remote.content:
                 logger.error("Failed MD5 checksum %s %s %s",
                              title, uri, uuid)
+                failed_tups.append(title, uri, uuid)
 
     tstampfn = os.path.join(download_dir, ".last_time_stamp")
+    failed_md5 = os.path.join(download_dir, ".failed_md5")
     with open(tstampfn, "w") as tstampf:
         tstampf.write(datetime.utcnow().isoformat())
+
+    if len(failed_tups > 0):
+        with open(failed_md5, "w") as failedf:
+            for tup in failed_tups:
+                failedf.write(" ".join(str(x) for x in tup) + "\n")
 
 
 def mkqry_polygons(coordinates, max_len=10):
